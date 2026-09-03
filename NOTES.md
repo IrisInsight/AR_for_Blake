@@ -9,6 +9,7 @@
 - **Gate.** One family code in `settings`. The shareable link carries it as `?code=`; the proxy swaps it for a cookie and strips it from the URL. API calls without the cookie get a 401. If the database is unreachable the gate fails open rather than locking the family out.
 - **Rocket name.** Free, 20 characters, tap-to-rename at the top of the shop, with a small profanity filter that also catches leetspeak.
 - **Database migration (item 5).** Blocked: the only Supabase org I can reach is on the Pro plan, where every project costs $10/month, and I have no credentials for Neon. See the checklist.
+- **Measured on production (2026-09-03).** Catalog search, uncached: InvestiGators 1.1 s, Dog Man 0.9 s, Wings of Fire 1.0 s; cached queries and seeded titles are instant. Level lookups: Haiku 9 s and about $0.06 per book; Sonnet fallback 36 s and about $0.20. Quiz pools: Sonnet about 113 s and $0.40 per book at the original settings, about 47 s and $0.28 after trimming to medium effort and six searches. Level verification on the production path: 5 of 6 known books exact; InvestiGators came back 3.3 against my expected 2.8 (AR BookFinder is the tiebreaker; points are 1.0 either way).
 - **Branch rename (item 7).** `main` is pushed and identical to the build branch, but changing the repository's default branch and Vercel's production branch needs the dashboards. See the checklist.
 
 ## Update: single reader
