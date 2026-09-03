@@ -1,6 +1,7 @@
 import { ok, route } from "@/lib/http";
 import { resolveBook } from "@/lib/resolve";
 import { bookPoints } from "@/lib/ar";
+import { jobResult, startJob } from "@/lib/jobs";
 
 export const maxDuration = 300;
 
@@ -16,8 +17,19 @@ const KNOWN = [
 
 /** Resolve each known book fresh with the requested model and report drift. ?model=haiku|sonnet */
 export const GET = route(async (req) => {
-  const m = new URL(req.url).searchParams.get("model");
+  const u = new URL(req.url);
+  const m = u.searchParams.get("model");
   const model = m === "sonnet" ? "sonnet" : m === "haiku" ? "haiku" : undefined; // undefined = production path (Haiku, Sonnet fallback)
+  const name = `verify:${model ?? "auto"}`;
+  if (u.searchParams.get("start") === "1") {
+    await startJob(name, () => run(model));
+    return ok({ started: name });
+  }
+  if (u.searchParams.get("result") === "1") return ok(await jobResult(name));
+  return ok(await run(model));
+});
+
+async function run(model: "haiku" | "sonnet" | undefined) {
   const results = await Promise.all(
     KNOWN.map(async (k) => {
       try {
@@ -31,5 +43,5 @@ export const GET = route(async (req) => {
       }
     }),
   );
-  return ok({ model: model ?? "auto", pass: results.filter((r) => r.okLevel && r.okPts).length, total: results.length, results });
-});
+  return { model: model ?? "auto", pass: results.filter((r) => r.okLevel && r.okPts).length, total: results.length, results };
+}

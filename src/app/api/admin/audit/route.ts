@@ -2,12 +2,23 @@ import { ok, route } from "@/lib/http";
 import { getAttemptsForBook, getKid, listBooks, updateAttempt, updateKid } from "@/lib/db";
 import { resolveBook } from "@/lib/resolve";
 import { earnedPoints, FORMATS, isFormat } from "@/lib/ar";
+import { jobResult, startJob } from "@/lib/jobs";
 
 export const maxDuration = 300;
 
 /** Re-resolve every cached book that has no format or looks inflated for its format; fix earned points. */
 export const GET = route(async (req) => {
-  const all = new URL(req.url).searchParams.get("all") === "1";
+  const u = new URL(req.url);
+  const all = u.searchParams.get("all") === "1";
+  if (u.searchParams.get("start") === "1") {
+    await startJob("audit", () => run(all));
+    return ok({ started: "audit" });
+  }
+  if (u.searchParams.get("result") === "1") return ok(await jobResult("audit"));
+  return ok(await run(all));
+});
+
+async function run(all: boolean) {
   const books = await listBooks();
   const changes = [];
   for (const b of books) {
@@ -34,5 +45,5 @@ export const GET = route(async (req) => {
       changes.push({ title: b.title, before, error: e instanceof Error ? e.message : String(e) });
     }
   }
-  return ok({ checked: books.length, changes });
-});
+  return { checked: books.length, changes };
+}
