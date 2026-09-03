@@ -251,21 +251,6 @@ export default function Rocket({ config, stage = 7, animateStage = null, flame =
       {built(4) && (
         <g clipPath={`url(#${gid("bodyclip")})`}>
           {decal}
-          {config.name && (
-            <text
-              x="0"
-              y="0"
-              transform={`translate(${BODY_X + BODY_W - 9} 222) rotate(-90)`}
-              fontFamily="var(--font-sans), sans-serif"
-              fontWeight="900"
-              fontSize="11"
-              fill={trim}
-              opacity=".95"
-              letterSpacing=".5"
-            >
-              {config.name.slice(0, 14)}
-            </text>
-          )}
         </g>
       )}
 
@@ -279,6 +264,24 @@ export default function Rocket({ config, stage = 7, animateStage = null, flame =
           <g transform="translate(89 176) scale(.22)">
             <MissionPatchInline patch={config.patch} />
           </g>
+        </g>
+      )}
+
+      {/* Name painted on the hull's left edge, over the band, clear of the window and patch */}
+      {built(4) && config.name && (
+        <g clipPath={`url(#${gid("bodyclip")})`}>
+          <text
+            transform="translate(78 228) rotate(-90)"
+            fontFamily="var(--font-sans), sans-serif"
+            fontWeight="900"
+            fontSize={config.name.length <= 12 ? 10 : 9}
+            fill={trim}
+            opacity=".95"
+            letterSpacing=".4"
+            {...(config.name.length > 14 ? { textLength: 120, lengthAdjust: "spacingAndGlyphs" as const } : {})}
+          >
+            {config.name.slice(0, 20)}
+          </text>
         </g>
       )}
 

@@ -18,8 +18,13 @@ export const POST = route(async (req) => {
     wordCount = LENGTH_BUCKETS[bucket]?.words ?? LENGTH_BUCKETS.novel.words;
   }
   if (!Number.isFinite(wordCount) || wordCount <= 0) throw new HttpError(400, "Word count is required");
+  const fmt = source === "manual" ? ({ picture: "picture", early: "early_chapter", novel: "middle_grade", long: "long_novel" } as Record<string, string>)[String(b.length ?? "novel")] ?? "middle_grade" : null;
   const book = await upsertBook({
     norm_key: normKey(title, author),
+    format: fmt,
+    level_source: source === "manual" ? "manual" : null,
+    word_count_source: source === "manual" ? "estimate" : null,
+    resolved_at: source === "manual" ? new Date().toISOString() : null,
     title,
     author,
     series: b.series ? String(b.series).slice(0, 120) : null,

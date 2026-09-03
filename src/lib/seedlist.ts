@@ -1,0 +1,53 @@
+// One-off pre-seed list: the first few books of the series an 8-year-old is most likely to bring home.
+export interface SeedTitle {
+  title: string;
+  author: string;
+}
+const s = (author: string, ...titles: string[]): SeedTitle[] => titles.map((title) => ({ title, author }));
+
+export const SEED_TITLES: SeedTitle[] = [
+  ...s("Dav Pilkey", "Dog Man", "Dog Man: Unleashed", "Dog Man: A Tale of Two Kitties", "Dog Man and Cat Kid", "Dog Man: Lord of the Fleas", "Dog Man: Brawl of the Wild", "Dog Man: For Whom the Ball Rolls", "Dog Man: Fetch-22", "Dog Man: Grime and Punishment", "Dog Man: Mothering Heights", "Dog Man: Twenty Thousand Fleas Under the Sea", "Dog Man: The Scarlet Shedder", "Dog Man: Big Jim Begins"),
+  ...s("Dav Pilkey", "Cat Kid Comic Club", "Cat Kid Comic Club: Perspectives", "Cat Kid Comic Club: On Purpose", "Cat Kid Comic Club: Collaborations", "Cat Kid Comic Club: Influencers"),
+  ...s("Dav Pilkey", "The Adventures of Captain Underpants", "Captain Underpants and the Attack of the Talking Toilets", "Captain Underpants and the Invasion of the Incredibly Naughty Cafeteria Ladies from Outer Space", "Captain Underpants and the Perilous Plot of Professor Poopypants", "Captain Underpants and the Wrath of the Wicked Wedgie Woman"),
+  ...s("Jeff Kinney", "Diary of a Wimpy Kid", "Diary of a Wimpy Kid: Rodrick Rules", "Diary of a Wimpy Kid: The Last Straw", "Diary of a Wimpy Kid: Dog Days", "Diary of a Wimpy Kid: The Ugly Truth", "Diary of a Wimpy Kid: Cabin Fever", "Diary of a Wimpy Kid: The Third Wheel", "Diary of a Wimpy Kid: Hard Luck"),
+  ...s("John Patrick Green", "InvestiGators", "InvestiGators: Take the Plunge", "InvestiGators: Off the Hook", "InvestiGators: Ants in Our P.A.N.T.S.", "InvestiGators: Braver and Boulder", "InvestiGators: Heist and Seek", "InvestiGators: All Tide Up"),
+  ...s("Lincoln Peirce", "Big Nate: In a Class by Himself", "Big Nate Strikes Again", "Big Nate on a Roll", "Big Nate Goes for Broke", "Big Nate Flips Out"),
+  ...s("Aaron Blabey", "The Bad Guys", "The Bad Guys in Mission Unpluckable", "The Bad Guys in The Furball Strikes Back", "The Bad Guys in Attack of the Zittens", "The Bad Guys in Intergalactic Gas", "The Bad Guys in Alien vs Bad Guys"),
+  ...s("Max Brallier", "The Last Kids on Earth", "The Last Kids on Earth and the Zombie Parade", "The Last Kids on Earth and the Nightmare King", "The Last Kids on Earth and the Cosmic Beyond", "The Last Kids on Earth and the Midnight Blade"),
+  ...s("Mary Pope Osborne", "Dinosaurs Before Dark", "The Knight at Dawn", "Mummies in the Morning", "Pirates Past Noon", "Night of the Ninjas", "Afternoon on the Amazon", "Sunset of the Sabertooth", "Midnight on the Moon"),
+  { title: "Who Was Albert Einstein?", author: "Jess Brallier" },
+  { title: "Who Was Walt Disney?", author: "Whitney Stewart" },
+  { title: "Who Was Abraham Lincoln?", author: "Janet B. Pascal" },
+  { title: "Who Was Martin Luther King, Jr.?", author: "Bonnie Bader" },
+  { title: "Who Was George Washington?", author: "Roberta Edwards" },
+  { title: "Who Was Harriet Tubman?", author: "Yona Zeldis McDonough" },
+  { title: "Who Was Neil Armstrong?", author: "Roberta Edwards" },
+  { title: "Who Was Steve Jobs?", author: "Pam Pollack" },
+  { title: "Who Was Jackie Robinson?", author: "Gail Herman" },
+  { title: "What Was the Titanic?", author: "Stephanie Sabol" },
+  { title: "What Was the First Thanksgiving?", author: "Joan Holub" },
+  { title: "Where Is the Great Barrier Reef?", author: "Nico Medina" },
+  ...s("Lauren Tarshis", "I Survived the Sinking of the Titanic, 1912", "I Survived the Shark Attacks of 1916", "I Survived Hurricane Katrina, 2005", "I Survived the Attacks of September 11, 2001", "I Survived the San Francisco Earthquake, 1906", "I Survived the Eruption of Mount St. Helens, 1980"),
+  ...s("Tui T. Sutherland", "Wings of Fire: The Dragonet Prophecy", "Wings of Fire: The Lost Heir", "Wings of Fire: The Hidden Kingdom", "Wings of Fire: The Dark Secret", "Wings of Fire: The Brightest Night"),
+  ...s("Rick Riordan", "The Lightning Thief", "The Sea of Monsters", "The Titan's Curse", "The Battle of the Labyrinth", "The Last Olympian"),
+  ...s("J. K. Rowling", "Harry Potter and the Sorcerer's Stone", "Harry Potter and the Chamber of Secrets", "Harry Potter and the Prisoner of Azkaban", "Harry Potter and the Goblet of Fire", "Harry Potter and the Order of the Phoenix"),
+  ...s("Erin Hunter", "Warriors: Into the Wild", "Warriors: Fire and Ice", "Warriors: Forest of Secrets"),
+  ...s("Kazu Kibuishi", "Amulet: The Stonekeeper", "Amulet: The Stonekeeper's Curse", "Amulet: The Cloud Searchers", "Amulet: The Last Council"),
+  ...s("Jeff Smith", "Bone: Out from Boneville", "Bone: The Great Cow Race", "Bone: Eyes of the Storm"),
+  ...s("Geronimo Stilton", "Lost Treasure of the Emerald Eye", "The Curse of the Cheese Pyramid", "Cat and Mouse in a Haunted House"),
+  ...s("Barbara Park", "Junie B. Jones and the Stupid Smelly Bus", "Junie B. Jones and a Little Monkey Business", "Junie B. Jones and Her Big Fat Mouth", "Junie B. Jones Is (Almost) a Flower Girl"),
+  ...s("Roald Dahl", "Charlie and the Chocolate Factory", "Matilda", "The BFG", "James and the Giant Peach", "Fantastic Mr. Fox", "The Twits", "George's Marvelous Medicine", "The Witches"),
+  { title: "Minecraft: The Island", author: "Max Brooks" },
+  { title: "Minecraft: The Crash", author: "Tracey Baptiste" },
+  { title: "Minecraft: Woodsword Chronicles: Into the Game!", author: "Nick Eliopulos" },
+  { title: "Diary of a Minecraft Zombie: A Scare of a Dare", author: "Zack Zombie" },
+  ...s("Tracey West", "Pokémon: I Choose You!", "Pokémon: Island of the Giant Pokémon", "Pokémon: Attack of the Prehistoric Pokémon"),
+  ...s("Tedd Arnold", "Hi! Fly Guy", "Super Fly Guy", "Shoo, Fly Guy!", "There Was an Old Lady Who Swallowed Fly Guy"),
+  ...s("Ben Clanton", "Narwhal: Unicorn of the Sea", "Super Narwhal and Jelly Jolt", "Peanut Butter and Jelly", "Narwhal's Otter Friend"),
+  ...s("Thomas Flintham", "Game Over, Super Rabbit Boy!", "Super Rabbit Boy Powers Up!", "Super Rabbit Racers!", "Super Rabbit Boy vs. Super Rabbit Boss!"),
+  ...s("Tracey West", "Dragon Masters: Rise of the Earth Dragon", "Dragon Masters: Saving the Sun Dragon", "Dragon Masters: Secret of the Water Dragon", "Dragon Masters: Power of the Fire Dragon"),
+  ...s("Katrina Charman", "The Last Firehawk: The Ember Stone", "The Last Firehawk: The Crystal Caverns", "The Last Firehawk: The Whispering Oak"),
+  ...s("Asia Citro", "Zoey and Sassafras: Dragons and Marshmallows", "Zoey and Sassafras: Monsters and Mold", "Zoey and Sassafras: Merhorses and Bubbles"),
+  ...s("Kate DiCamillo", "Mercy Watson to the Rescue", "Mercy Watson Goes for a Ride", "Mercy Watson Fights Crime", "Mercy Watson: Princess in Disguise"),
+  ...s("Cube Kid", "Diary of an 8-Bit Warrior", "Diary of an 8-Bit Warrior: From Seeds to Swords", "Diary of an 8-Bit Warrior: Crafting Alliances"),
+];

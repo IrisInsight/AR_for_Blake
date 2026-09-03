@@ -10,9 +10,11 @@ const tables: Record<string, Row[]> = g.__rrTables ?? (g.__rrTables = {
     { id: "blake", name: "Blake", grade: 3, goal_points: 20, accent: "#ff7a1a", avatar: "astronaut", bolts: 0, lifetime_points: 0, carry_over: 0, owned: [], seen_flag_tip: false, sort_order: 0, created_at: new Date().toISOString(), rocket: { hull: "red", nose: "cone", fins: "swept", decal: "none", booster: "none", engine: "standard", exhaust: "orange", name: "Blake 1", patch: { shape: "circle", icon: "rocket", c1: "#ff7a1a", c2: "#1b2a4a" } } },
   ],
   books: [], question_pools: [], planets: [], attempts: [], question_flags: [], kid_badges: [], missions: [], bolt_ledger: [],
+  search_cache: [], prep_queue: [], warmed_series: [], api_usage: [],
+  settings: [{ key: "family_code", value: "TESTCODE", updated_at: new Date().toISOString() }, { key: "books_provider", value: "openlibrary", updated_at: new Date().toISOString() }],
 });
 const defaults: Record<string, () => Row> = {
-  books: () => ({ id: randomUUID(), created_at: new Date().toISOString() }),
+  books: () => ({ id: randomUUID(), created_at: new Date().toISOString(), series: null, series_number: null, description: null, emoji: "📖", source: "search", format: null, page_count: null, year: null, cover_url: null, level_source: null, word_count_source: null, resolved_model: null, resolved_at: null }),
   planets: () => ({ id: randomUUID(), launched_at: new Date().toISOString() }),
   attempts: () => ({ id: randomUUID(), status: "in_progress", answers: {}, flagged: [], points_earned: 0, bolts_earned: 0, bonus_status: null, bonus_idxs: [], bonus_answers: {}, planet_id: null, archived: false, created_at: new Date().toISOString(), completed_at: null }),
   question_flags: () => ({ id: Math.floor(Math.random() * 1e9), created_at: new Date().toISOString() }),
@@ -21,8 +23,13 @@ const defaults: Record<string, () => Row> = {
   bolt_ledger: () => ({ id: Date.now() + Math.random(), created_at: new Date().toISOString() }),
   question_pools: () => ({ created_at: new Date().toISOString() }),
   kids: () => ({}),
+  search_cache: () => ({ created_at: new Date().toISOString() }),
+  prep_queue: () => ({ id: randomUUID(), status: "pending", book_id: null, error: null, tries: 0, source: "grownup", created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+  warmed_series: () => ({ created_at: new Date().toISOString() }),
+  api_usage: () => ({ id: Date.now() + Math.random(), created_at: new Date().toISOString() }),
+  settings: () => ({ updated_at: new Date().toISOString() }),
 };
-const pks: Record<string, string[]> = { kids: ["id"], books: ["id"], question_pools: ["book_id", "kind"], planets: ["id"], attempts: ["id"], question_flags: ["id"], kid_badges: ["kid_id", "badge_id"], missions: ["id"], bolt_ledger: ["id"] };
+const pks: Record<string, string[]> = { kids: ["id"], books: ["id"], question_pools: ["book_id", "kind"], planets: ["id"], attempts: ["id"], question_flags: ["id"], kid_badges: ["kid_id", "badge_id"], missions: ["id"], bolt_ledger: ["id"], search_cache: ["q"], prep_queue: ["id"], warmed_series: ["name"], api_usage: ["id"], settings: ["key"] };
 const uniques: Record<string, string[][]> = { books: [["norm_key"]], attempts: [["kid_id", "book_id"]], missions: [["kid_id", "week_start", "kind"]] };
 
 class Builder {
@@ -45,11 +52,13 @@ class Builder {
   upsert(p: any) { this.op = "upsert"; this.payload = p; return this; }
   delete() { this.op = "delete"; return this; }
   eq(c: string, v: any) { this.filters.push([c, v]); return this; }
+  gte(c: string, v: any) { this.gtes.push([c, v]); return this; }
+  private gtes: [string, any][] = [];
   order(c: string, o?: { ascending?: boolean }) { this.orders.push([c, o?.ascending !== false]); return this; }
   limit(n: number) { this.lim = n; return this; }
   single() { this.wantSingle = "single"; return this; }
   maybeSingle() { this.wantSingle = "maybe"; return this; }
-  private match(r: Row) { return this.filters.every(([c, v]) => r[c] === v); }
+  private match(r: Row) { return this.filters.every(([c, v]) => r[c] === v) && this.gtes.every(([c, v]) => r[c] >= v); }
   private project(r: Row): Row {
     const out = { ...r };
     const m = this.cols.match(/(\w+):(\w+)\(\*\)/);

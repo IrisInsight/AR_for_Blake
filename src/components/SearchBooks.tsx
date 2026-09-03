@@ -1,53 +1,71 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ApiError, post } from "@/lib/client";
-import { fmtPts, quizLength, LENGTH_BUCKETS, type LengthBucket } from "@/lib/ar";
-import type { BookCandidate } from "@/lib/types";
-import { ErrorNote, LevelChip, Spinner } from "./ui";
+import { fmtPts, quizLength, LENGTH_BUCKETS, type LengthBucket, type LevelLabel } from "@/lib/ar";
+import type { Book } from "@/lib/types";
+import { ErrorNote, LevelChip } from "./ui";
+import Stages, { Shimmer } from "./Stages";
 import { play } from "@/lib/sound";
 
-const WAIT_LINES = ["Checking the library computer…", "Counting the words…", "Looking up the level…", "Almost there…"];
+interface Card {
+  key: string;
+  title: string;
+  author: string;
+  pages: number | null;
+  year: number | null;
+  cover: string | null;
+  book: (Book & { level: LevelLabel }) | null;
+  error?: string;
+}
 
 export default function SearchBooks({ kidId, zpd }: { kidId: string; zpd: [number, number] }) {
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [results, setResults] = useState<BookCandidate[] | null>(null);
+  const [phase, setPhase] = useState<"idle" | "finding" | "levels" | "done">("idle");
+  const [cards, setCards] = useState<Card[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [picking, setPicking] = useState<number | null>(null);
   const [manual, setManual] = useState(false);
-  const [line, setLine] = useState(0);
+  const seq = useRef(0);
 
   async function search(e?: React.FormEvent) {
     e?.preventDefault();
     if (!q.trim()) return;
-    setBusy(true);
+    const my = ++seq.current;
+    setPhase("finding");
     setErr(null);
-    setResults(null);
-    setLine(0);
-    const t = setInterval(() => setLine((l) => (l + 1) % WAIT_LINES.length), 2500);
+    setCards(null);
     try {
-      const res = await post<{ results: BookCandidate[] }>("/api/search", { q, kidId });
-      setResults(res.results);
+      const res = await post<{ cards: Card[] }>("/api/search", { q, kidId });
+      if (my !== seq.current) return;
+      setCards(res.cards);
+      const pending = res.cards.filter((c) => !c.book);
+      setPhase(pending.length ? "levels" : "done");
+      // Resolve levels in parallel and fill each card in place.
+      await Promise.all(
+        pending.map(async (c) => {
+          try {
+            const r = await post<{ book: Book & { level: LevelLabel } }>("/api/resolve", { kidId, title: c.title, author: c.author, pages: c.pages, year: c.year, cover: c.cover });
+            if (my !== seq.current) return;
+            setCards((cs) => cs?.map((x) => (x.key === c.key ? { ...x, book: r.book } : x)) ?? cs);
+          } catch (e2) {
+            if (my !== seq.current) return;
+            setCards((cs) => cs?.map((x) => (x.key === c.key ? { ...x, error: e2 instanceof ApiError ? e2.message : "Couldn't find the level." } : x)) ?? cs);
+          }
+        }),
+      );
+      if (my === seq.current) setPhase("done");
     } catch (e) {
+      if (my !== seq.current) return;
       setErr(e instanceof ApiError ? e.message : "Search didn't work. Try again.");
-    } finally {
-      clearInterval(t);
-      setBusy(false);
+      setPhase("idle");
     }
   }
 
-  async function pick(c: BookCandidate, i: number) {
-    setPicking(i);
+  function pick(c: Card) {
+    if (!c.book) return;
     play("tap");
-    try {
-      const res = await post<{ bookId: string }>("/api/books", { kidId, ...c, source: "search" });
-      router.push(`/k/${kidId}/book/${res.bookId}`);
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Couldn't save that book.");
-      setPicking(null);
-    }
+    router.push(`/k/${kidId}/book/${c.book.id}`);
   }
 
   return (
@@ -62,7 +80,7 @@ export default function SearchBooks({ kidId, zpd }: { kidId: string; zpd: [numbe
           autoCorrect="on"
           className="min-h-[56px] min-w-0 flex-1 rounded-2xl bg-panel px-4 text-lg font-bold placeholder:text-ink-2/70"
         />
-        <button className="btn btn-accent min-h-[56px] px-5" disabled={busy || !q.trim()}>
+        <button className="btn btn-accent min-h-[56px] px-5" disabled={phase === "finding" || !q.trim()}>
           Search
         </button>
       </form>
@@ -70,50 +88,77 @@ export default function SearchBooks({ kidId, zpd }: { kidId: string; zpd: [numbe
         Your zone is level {zpd[0].toFixed(1)} to {zpd[1].toFixed(1)}. Any book counts. Challenge books are extra brave.
       </p>
 
-      {busy && <Spinner label={WAIT_LINES[line]} />}
+      {phase === "finding" && <Stages stages={[{ label: "Finding the titles", state: "active" }, { label: "Checking the levels", state: "todo" }]} />}
       {err && <ErrorNote message={err} />}
 
-      {results && results.length === 0 && (
+      {cards && cards.length === 0 && (
         <div className="panel p-6 text-center">
           <div className="text-5xl" aria-hidden>🔭</div>
-          <h2 className="mt-2 text-xl font-black">No kid books found for that</h2>
+          <h2 className="mt-2 text-xl font-black">No books found for that</h2>
           <p className="text-ink-2 mt-1 font-bold">Check the spelling, try the author&apos;s name, or add it yourself below.</p>
         </div>
       )}
 
-      {results && results.length > 0 && (
+      {cards && cards.length > 0 && (
         <ul className="flex flex-col gap-2">
-          {results.map((c, i) => (
-            <li key={i}>
-              <button
-                type="button"
-                onClick={() => pick(c, i)}
-                disabled={picking != null}
-                className="panel anim-rise flex w-full items-center gap-3 p-3 text-left active:scale-[0.99] disabled:opacity-60"
-                style={{ animationDelay: `${i * 60}ms` }}
-              >
-                <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-panel-2 text-3xl" aria-hidden>
-                  {c.emoji}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-lg font-extrabold">{c.title}</div>
-                  <div className="text-ink-2 truncate text-sm font-bold">
-                    {c.author}
-                    {c.series ? ` · ${c.series}${c.series_number ? ` #${c.series_number}` : ""}` : ""}
+          {cards.map((c, i) => {
+            const b = c.book;
+            return (
+              <li key={c.key}>
+                <button
+                  type="button"
+                  onClick={() => pick(c)}
+                  disabled={!b}
+                  aria-busy={!b && !c.error}
+                  className="panel anim-rise flex w-full items-center gap-3 p-3 text-left active:scale-[0.99] disabled:opacity-90"
+                  style={{ animationDelay: `${i * 50}ms` }}
+                >
+                  <div className="grid h-16 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-panel-2 text-3xl" aria-hidden>
+                    {c.cover ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={c.cover} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    ) : (
+                      b?.emoji ?? "📖"
+                    )}
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1">
-                    <LevelChip level={c.level} />
-                    <span className="chip bg-panel-2 text-ink-2">Level {c.atos.toFixed(1)}</span>
-                    <span className="chip bg-panel-2 text-ink-2">{quizLength(c.points)} questions</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-lg font-extrabold">{c.title}</div>
+                    <div className="text-ink-2 truncate text-sm font-bold">
+                      {c.author}
+                      {b?.series ? ` · ${b.series}${b.series_number ? ` #${b.series_number}` : ""}` : c.year ? ` · ${c.year}` : ""}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      {b ? (
+                        <>
+                          <LevelChip level={b.level} />
+                          <span className="chip bg-panel-2 text-ink-2">Level {b.atos.toFixed(1)}</span>
+                          <span className="chip bg-panel-2 text-ink-2">{quizLength(b.points)} questions</span>
+                        </>
+                      ) : c.error ? (
+                        <span className="chip bg-panel-2 text-ink-2">{c.error}</span>
+                      ) : (
+                        <>
+                          <Shimmer className="h-7 w-24 rounded-full" />
+                          <Shimmer className="h-7 w-20 rounded-full" />
+                          <span className="text-ink-2 text-xs font-bold">checking the level…</span>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="numeral text-3xl text-accent">{fmtPts(c.points)}</div>
-                  <div className="text-ink-2 text-xs font-bold">pts</div>
-                </div>
-              </button>
-            </li>
-          ))}
+                  <div className="w-14 text-right">
+                    {b ? (
+                      <>
+                        <div className="numeral text-3xl text-accent">{fmtPts(b.points)}</div>
+                        <div className="text-ink-2 text-xs font-bold">pts</div>
+                      </>
+                    ) : (
+                      <Shimmer className="h-9 w-12" />
+                    )}
+                  </div>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -174,12 +219,7 @@ function ManualAdd({ kidId, zpd, onError }: { kidId: string; zpd: [number, numbe
       <div className="font-bold">How long is it?</div>
       <div className="grid grid-cols-2 gap-2">
         {(Object.keys(LENGTH_BUCKETS) as LengthBucket[]).map((k) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setLength(k)}
-            className={`btn tap justify-start px-3 text-base ${length === k ? "btn-accent" : ""}`}
-          >
+          <button key={k} type="button" onClick={() => setLength(k)} className={`btn tap justify-start px-3 text-base ${length === k ? "btn-accent" : ""}`}>
             {LENGTH_BUCKETS[k].label}
           </button>
         ))}

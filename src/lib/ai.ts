@@ -2,11 +2,16 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam, ContentBlock } from "@anthropic-ai/sdk/resources/messages";
 import { BONUS_POOL_SIZE, MAIN_POOL_SIZE } from "./ar";
 import type { Question } from "./types";
+import { costUsd, type Usage } from "./pricing";
+import { logUsage } from "./db";
 
-export const MODEL = "claude-sonnet-5";
+export const SONNET = "claude-sonnet-5";
+export const HAIKU = "claude-haiku-4-5";
+export const MODEL = SONNET;
 // Checked against platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool on 2026-09-03:
-// web_search_20260318 is the newest version (dynamic filtering + response inclusion), supported on Claude 4.6+.
-export const WEB_SEARCH_TOOL = { type: "web_search_20260318" as const, name: "web_search" as const };
+// web_search_20260318 (dynamic filtering) needs Claude 4.6+; Haiku 4.5 uses the basic 20250305 tool.
+export const WEB_SEARCH_SONNET = { type: "web_search_20260318" as const, name: "web_search" as const };
+export const WEB_SEARCH_HAIKU = { type: "web_search_20250305" as const, name: "web_search" as const };
 
 export class MissingKeyError extends Error {
   constructor() {
@@ -29,28 +34,46 @@ function anthropic(): Anthropic {
   return client;
 }
 
-interface RunOpts {
+export interface RunOpts {
+  model: string;
+  purpose: string;
   system: string;
   user: string;
   maxSearches: number;
-  effort: "low" | "medium" | "high";
+  effort?: "low" | "medium" | "high";
   maxTokens?: number;
 }
 
-/** One search-enabled call. Handles pause_turn by sending the paused turn back. Returns the text. */
-export async function runWithSearch(opts: RunOpts): Promise<string> {
+export interface RunResult {
+  text: string;
+  usage: Usage;
+  cost: number;
+  ms: number;
+}
+
+/** One search-enabled call. Handles pause_turn, sums usage across turns, logs cost. */
+export async function runWithSearch(opts: RunOpts): Promise<RunResult> {
   const c = anthropic();
+  const t0 = Date.now();
   const messages: MessageParam[] = [{ role: "user", content: opts.user }];
+  const usage: Usage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, searches: 0 };
+  const isHaiku = opts.model === HAIKU;
+  const tool = isHaiku ? WEB_SEARCH_HAIKU : WEB_SEARCH_SONNET;
   let text = "";
   for (let i = 0; i < 6; i++) {
     const res = await c.messages.create({
-      model: MODEL,
+      model: opts.model,
       max_tokens: opts.maxTokens ?? 8000,
       system: opts.system,
       messages,
-      tools: [{ ...WEB_SEARCH_TOOL, max_uses: opts.maxSearches }],
-      output_config: { effort: opts.effort },
+      tools: [{ ...tool, max_uses: opts.maxSearches }],
+      ...(isHaiku ? {} : { output_config: { effort: opts.effort ?? "medium" } }),
     });
+    usage.input_tokens += res.usage.input_tokens;
+    usage.output_tokens += res.usage.output_tokens;
+    usage.cache_read_tokens += res.usage.cache_read_input_tokens ?? 0;
+    usage.cache_write_tokens += res.usage.cache_creation_input_tokens ?? 0;
+    usage.searches += res.usage.server_tool_use?.web_search_requests ?? 0;
     text = collectText(res.content);
     if (res.stop_reason === "pause_turn") {
       messages.push({ role: "assistant", content: res.content });
@@ -59,7 +82,10 @@ export async function runWithSearch(opts: RunOpts): Promise<string> {
     if (res.stop_reason === "refusal") throw new Error("The model declined this request.");
     break;
   }
-  return text;
+  const ms = Date.now() - t0;
+  const cost = costUsd(opts.model, usage);
+  void logUsage({ model: opts.model, purpose: opts.purpose, ...usage, cost_usd: cost, ms }).catch(() => {});
+  return { text, usage, cost, ms };
 }
 
 function collectText(content: ContentBlock[]): string {
@@ -97,74 +123,12 @@ export function extractJson<T>(text: string): T {
   throw new Error("Could not read JSON from model reply");
 }
 
-// ---------------- Book lookup ----------------
-
-export interface RawBook {
-  title: string;
-  author: string;
-  series: string | null;
-  series_number: number | null;
-  atos: number;
-  word_count: number;
-  description: string;
-  emoji: string;
-}
-
-const SEARCH_SYSTEM = `You are the book lookup service for a children's reading app used by an 8-year-old boy in third grade. A kid types the title (sometimes misspelled, sometimes just a series name or a character) of a book they just finished. Return up to 5 real, published books that best match.
-
-Use web search to verify each book's ATOS book level (as listed on AR BookFinder or the publisher) and its word count. Search for "<title> AR BookFinder" or "<title> ATOS level word count". If a word count cannot be found, estimate it from page count and format (picture book ~600 words, early chapter book ~6,000-12,000, middle grade novel ~30,000-60,000) and say so by rounding to a plausible number. Match the exact edition and author; many children's titles are reused.
-
-Only return books appropriate for children (picture books, early readers, chapter books, middle grade, gentle young adult). If the query points at adult, violent, or sexual material, or is not a book at all, return an empty array.
-
-For each book give: title, author (as printed), series name and number in the series (null if standalone), atos (a decimal like 4.2), word_count (an integer), description (one sentence, spoiler-free, written for a kid), emoji (one emoji that represents the book).
-
-Return only JSON, no prose:
-[{"title":"...","author":"...","series":null,"series_number":null,"atos":4.2,"word_count":31938,"description":"...","emoji":"🕷️"}]`;
-
-export async function lookupBooks(query: string): Promise<RawBook[]> {
-  if (mockMode()) return mockBooks(query);
-  const text = await runWithSearch({
-    system: SEARCH_SYSTEM,
-    user: `Query: ${query.slice(0, 120)}`,
-    maxSearches: 6,
-    effort: "medium",
-    maxTokens: 4000,
-  });
-  let arr: unknown;
-  try {
-    arr = extractJson<unknown>(text);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(arr)) return [];
-  const out: RawBook[] = [];
-  for (const r of arr as Record<string, unknown>[]) {
-    const title = String(r.title ?? "").trim();
-    const author = String(r.author ?? "").trim();
-    const atos = Number(r.atos);
-    const wc = Math.round(Number(r.word_count));
-    if (!title || !author || !Number.isFinite(atos) || !Number.isFinite(wc) || wc <= 0) continue;
-    out.push({
-      title,
-      author,
-      series: r.series ? String(r.series) : null,
-      series_number: r.series_number == null ? null : Number(r.series_number),
-      atos: Math.max(0.5, Math.min(12, Math.round(atos * 10) / 10)),
-      word_count: Math.max(100, wc),
-      description: String(r.description ?? "").slice(0, 200),
-      emoji: firstEmoji(String(r.emoji ?? "")) ?? "📖",
-    });
-    if (out.length >= 5) break;
-  }
-  return out;
-}
-
-function firstEmoji(s: string): string | null {
+export function firstEmoji(s: string): string | null {
   const m = s.match(/\p{Extended_Pictographic}(️|‍\p{Extended_Pictographic})*/u);
   return m ? m[0] : null;
 }
 
-// ---------------- Quiz generation ----------------
+// ---------------- Quiz generation (Sonnet) ----------------
 
 function quizSystem(n: number, atos: number, bonus: boolean): string {
   const skills = bonus
@@ -199,7 +163,9 @@ export async function generateQuestions(book: BookForQuiz, kind: "main" | "bonus
   const n = kind === "main" ? MAIN_POOL_SIZE : BONUS_POOL_SIZE;
   if (mockMode()) return mockQuestions(book, n, kind);
   const desc = `Book: "${book.title}" by ${book.author}${book.series ? ` (${book.series}${book.series_number ? ` #${book.series_number}` : ""})` : ""}. ATOS level ${book.atos.toFixed(1)}.`;
-  const text = await runWithSearch({
+  const { text } = await runWithSearch({
+    model: SONNET,
+    purpose: `quiz_${kind}`,
     system: quizSystem(n, book.atos, kind === "bonus"),
     user: desc,
     maxSearches: 8,
@@ -220,24 +186,11 @@ export async function generateQuestions(book: BookForQuiz, kind: "main" | "bonus
   return qs;
 }
 
-// ---------------- Mock mode (local testing without a key) ----------------
-
-function mockBooks(query: string): RawBook[] {
-  const q = query.toLowerCase();
-  if (q.includes("nothing")) return [];
-  return [
-    { title: "Charlotte's Web", author: "E. B. White", series: null, series_number: null, atos: 4.4, word_count: 31938, description: "A pig named Wilbur and a clever spider become best friends.", emoji: "🕷️" },
-    { title: "Diary of a Wimpy Kid", author: "Jeff Kinney", series: "Diary of a Wimpy Kid", series_number: 1, atos: 5.2, word_count: 19784, description: "Greg Heffley survives middle school, barely.", emoji: "📓" },
-    { title: "Harry Potter and the Sorcerer's Stone", author: "J. K. Rowling", series: "Harry Potter", series_number: 1, atos: 5.5, word_count: 77325, description: "A boy finds out he is a wizard.", emoji: "⚡" },
-    { title: "Frog and Toad Are Friends", author: "Arnold Lobel", series: "Frog and Toad", series_number: 1, atos: 2.9, word_count: 2275, description: "Two friends share five little adventures.", emoji: "🐸" },
-  ].filter((b) => !q || b.title.toLowerCase().includes(q.split(" ")[0]) || true);
-}
-
 function mockQuestions(book: BookForQuiz, n: number, kind: string): Question[] {
   return Array.from({ length: n }, (_, i) => ({
     q: `${kind === "bonus" ? "Why" : "What"} happens in part ${i + 1} of ${book.title}?`,
     choices: ["The right answer", "A wrong answer", "Another wrong one", "Also wrong"],
-    answer: i % 4 === 0 ? 0 : 0,
+    answer: 0,
     skill: kind === "bonus" ? "inference" : "recall",
   }));
 }

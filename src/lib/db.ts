@@ -51,6 +51,14 @@ function rowToBook(r: Record<string, unknown>): Book {
     word_count: num(r.word_count),
     points: num(r.points),
     series_number: r.series_number == null ? null : num(r.series_number),
+    page_count: r.page_count == null ? null : num(r.page_count),
+    year: r.year == null ? null : num(r.year),
+    format: (r.format as string) ?? null,
+    cover_url: (r.cover_url as string) ?? null,
+    level_source: (r.level_source as string) ?? null,
+    word_count_source: (r.word_count_source as string) ?? null,
+    resolved_model: (r.resolved_model as string) ?? null,
+    resolved_at: (r.resolved_at as string) ?? null,
   };
 }
 
@@ -101,7 +109,7 @@ export async function getBook(id: string): Promise<Book | null> {
   return res.data ? rowToBook(res.data) : null;
 }
 
-export async function upsertBook(b: Omit<Book, "id" | "created_at">): Promise<Book> {
+export async function upsertBook(b: Partial<Omit<Book, "id" | "created_at">> & { norm_key: string; title: string; author: string; atos: number; word_count: number; points: number }): Promise<Book> {
   const existing = await db().from("books").select("*").eq("norm_key", b.norm_key).maybeSingle();
   if (existing.error) throw new DbError(existing.error.message);
   if (existing.data) return rowToBook(existing.data);
@@ -239,4 +247,114 @@ export async function deleteLedgerAndBadges(kidId: string) {
   check(await db().from("missions").delete().eq("kid_id", kidId));
   check(await db().from("planets").delete().eq("kid_id", kidId));
   check(await db().from("attempts").delete().eq("kid_id", kidId));
+}
+
+// ---------- Round two: resolved-book cache, settings, search cache, prep queue, usage ----------
+import type { PrepItem, PrepStatus } from "./types";
+
+export async function getBookByKey(key: string): Promise<Book | null> {
+  const res = await db().from("books").select("*").eq("norm_key", key).maybeSingle();
+  if (res.error) throw new DbError(res.error.message);
+  return res.data ? rowToBook(res.data) : null;
+}
+
+export async function updateBook(id: string, patch: Partial<Record<keyof Book, unknown>>): Promise<void> {
+  check(await db().from("books").update(patch).eq("id", id));
+}
+
+export async function listBooks(): Promise<Book[]> {
+  const rows = check(await db().from("books").select("*").order("created_at"));
+  return (rows as Record<string, unknown>[]).map(rowToBook);
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+  const res = await db().from("settings").select("value").eq("key", key).maybeSingle();
+  if (res.error) throw new DbError(res.error.message);
+  return res.data ? String(res.data.value) : null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  check(await db().from("settings").upsert({ key, value, updated_at: new Date().toISOString() }));
+}
+
+export async function getSearchCache(q: string): Promise<{ provider: string; results: unknown } | null> {
+  const res = await db().from("search_cache").select("provider, results").eq("q", q).maybeSingle();
+  if (res.error) throw new DbError(res.error.message);
+  return res.data ? { provider: String(res.data.provider), results: res.data.results } : null;
+}
+
+export async function putSearchCache(q: string, provider: string, results: unknown): Promise<void> {
+  check(await db().from("search_cache").upsert({ q, provider, results }));
+}
+
+export async function isSeriesWarmed(name: string): Promise<boolean> {
+  const res = await db().from("warmed_series").select("name").eq("name", name).maybeSingle();
+  if (res.error) throw new DbError(res.error.message);
+  return Boolean(res.data);
+}
+
+export async function insertWarmedSeries(name: string): Promise<void> {
+  const res = await db().from("warmed_series").insert({ name });
+  if (res.error && res.error.code !== "23505") throw new DbError(res.error.message);
+}
+
+export async function logUsage(row: { model: string; purpose: string; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number; searches: number; cost_usd: number; ms: number }): Promise<void> {
+  check(await db().from("api_usage").insert(row));
+}
+
+export async function usageSince(iso: string): Promise<{ purpose: string; model: string; calls: number; cost: number; searches: number }[]> {
+  const rows = check(await db().from("api_usage").select("purpose, model, cost_usd, searches").gte("created_at", iso)) as { purpose: string; model: string; cost_usd: number | string; searches: number }[];
+  const agg = new Map<string, { purpose: string; model: string; calls: number; cost: number; searches: number }>();
+  for (const r of rows) {
+    const k = `${r.purpose}|${r.model}`;
+    const a = agg.get(k) ?? { purpose: r.purpose, model: r.model, calls: 0, cost: 0, searches: 0 };
+    a.calls++;
+    a.cost += Number(r.cost_usd);
+    a.searches += r.searches;
+    agg.set(k, a);
+  }
+  return [...agg.values()].map((a) => ({ ...a, cost: Math.round(a.cost * 1000) / 1000 }));
+}
+
+export function usageLastDays(days: number) {
+  return usageSince(new Date(Date.now() - days * 864e5).toISOString());
+}
+
+export async function listPrep(): Promise<PrepItem[]> {
+  return check(await db().from("prep_queue").select("*").order("created_at", { ascending: false }).limit(300)) as PrepItem[];
+}
+
+export async function findPrepByBook(bookId: string): Promise<PrepItem | null> {
+  const res = await db().from("prep_queue").select("*").eq("book_id", bookId).maybeSingle();
+  if (res.error) throw new DbError(res.error.message);
+  return (res.data as PrepItem) ?? null;
+}
+
+export async function insertPrep(row: { title: string; author: string | null; book_id: string | null; source: string }): Promise<PrepItem> {
+  return check(await db().from("prep_queue").insert(row).select("*").single()) as PrepItem;
+}
+
+export async function updatePrep(id: string, patch: Partial<PrepItem>): Promise<void> {
+  check(await db().from("prep_queue").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id));
+}
+
+export async function pendingPrep(limit: number): Promise<PrepItem[]> {
+  return check(await db().from("prep_queue").select("*").eq("status", "pending").order("created_at").limit(limit)) as PrepItem[];
+}
+
+/** Atomically move a pending row to generating. Returns false if someone else claimed it. */
+export async function claimPrep(id: string): Promise<boolean> {
+  const res = await db().from("prep_queue").update({ status: "generating" satisfies PrepStatus, updated_at: new Date().toISOString() }).eq("id", id).eq("status", "pending").select("id");
+  if (res.error) throw new DbError(res.error.message);
+  return Array.isArray(res.data) && res.data.length > 0;
+}
+
+export async function countPrep(status: PrepStatus): Promise<number> {
+  const rows = check(await db().from("prep_queue").select("id").eq("status", status)) as { id: string }[];
+  return rows.length;
+}
+
+export async function getAttemptsForBook(bookId: string): Promise<Attempt[]> {
+  const rows = check(await db().from("attempts").select("*").eq("book_id", bookId));
+  return (rows as Record<string, unknown>[]).map(rowToAttempt);
 }

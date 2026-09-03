@@ -1,12 +1,12 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import SoundToggle from "@/components/SoundToggle";
 import { ErrorNote } from "@/components/ui";
 import { ACCENT_COLORS, avatarEmoji } from "@/lib/catalog";
 import { ApiError, post } from "@/lib/client";
 import { fmtPts, zpdFor } from "@/lib/ar";
-import type { Kid, LedgerEntry } from "@/lib/types";
+import type { Kid, LedgerEntry, PrepItem } from "@/lib/types";
 
 interface AttemptRow {
   id: string;
@@ -20,7 +20,7 @@ interface AttemptRow {
   flagged: number;
 }
 
-export default function GrownupClient({ kids, attempts, ledgers, keyOk }: { kids: Kid[]; attempts: AttemptRow[]; ledgers: Record<string, LedgerEntry[]>; keyOk: boolean }) {
+export default function GrownupClient({ kids, attempts, ledgers, keyOk, prep, code, link, spend30 }: { kids: Kid[]; attempts: AttemptRow[]; ledgers: Record<string, LedgerEntry[]>; keyOk: boolean; prep: PrepItem[]; code: string; link: string; spend30: number }) {
   const router = useRouter();
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,10 +45,14 @@ export default function GrownupClient({ kids, attempts, ledgers, keyOk }: { kids
         <div className="font-extrabold">{keyOk ? "✅ Claude is connected" : "⚠️ Claude is not connected yet"}</div>
         <p className="text-ink-2 mt-1 text-sm font-bold">
           {keyOk
-            ? "Book search and quiz writing are working."
+            ? `Book search and quiz writing are working. Claude spend in the last 30 days: about $${spend30.toFixed(2)}.`
             : "Add ANTHROPIC_API_KEY to the Vercel project's environment variables and redeploy. Until then, book search and quizzes show a friendly message instead of working."}
         </p>
       </div>
+
+      <ShareLink code={code} link={link} />
+
+      <PrepQueue items={prep} />
 
       <div className="panel flex items-center justify-between p-4">
         <div>
@@ -116,6 +120,142 @@ export default function GrownupClient({ kids, attempts, ledgers, keyOk }: { kids
         iPhone or iPad: open this page in Safari, tap Share, then &quot;Add to Home Screen&quot;. It opens full screen like an app.
       </div>
     </div>
+  );
+}
+
+function ShareLink({ code, link }: { code: string; link: string }) {
+  const router = useRouter();
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  return (
+    <section className="panel flex flex-col gap-2 p-4">
+      <div className="font-extrabold">Family link</div>
+      <p className="text-ink-2 text-sm font-bold">Open this link once on any phone or iPad and it stays signed in. Without it, the app asks for the code.</p>
+      <div className="flex items-center gap-2">
+        <input readOnly value={link} className="min-h-[44px] min-w-0 flex-1 rounded-xl bg-space px-3 text-sm font-bold" onFocus={(e) => e.currentTarget.select()} />
+        <button
+          type="button"
+          className="btn tap px-4 text-sm"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(link);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            } catch {
+              /* ignore */
+            }
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-ink-2 text-sm font-bold">
+          Code: <span className="text-ink font-black tracking-widest">{code}</span>
+        </div>
+        <button
+          type="button"
+          disabled={busy}
+          className="btn btn-ghost tap text-sm"
+          onClick={async () => {
+            if (!window.confirm("Make a new code? Every other device will need the new link.")) return;
+            setBusy(true);
+            await post("/api/gate/rotate", {}).catch(() => {});
+            setBusy(false);
+            router.refresh();
+          }}
+        >
+          Make a new code
+        </button>
+      </div>
+    </section>
+  );
+}
+
+const STATUS_LABEL: Record<string, string> = { pending: "waiting", generating: "writing…", ready: "ready", failed: "failed" };
+
+function PrepQueue({ items }: { items: PrepItem[] }) {
+  const router = useRouter();
+  const [title, setTitle] = useState("");
+  const [author, setAuthor] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const active = items.some((i) => i.status === "pending" || i.status === "generating");
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => router.refresh(), 8000);
+    return () => clearInterval(t);
+  }, [active, router]);
+  const counts = { ready: 0, pending: 0, generating: 0, failed: 0 };
+  for (const i of items) counts[i.status]++;
+  const shown = showAll ? items : items.filter((i) => i.status !== "ready").concat(items.filter((i) => i.status === "ready").slice(0, 5));
+  return (
+    <section className="panel flex flex-col gap-3 p-4">
+      <div>
+        <div className="font-extrabold">Quiz prep</div>
+        <p className="text-ink-2 text-sm font-bold">Type what Blake is reading now. The quiz gets written right away so it&apos;s instant when he finishes.</p>
+      </div>
+      <form
+        className="flex flex-col gap-2 sm:flex-row"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!title.trim()) return;
+          setBusy(true);
+          setErr(null);
+          try {
+            await post("/api/prep/add", { title, author });
+            setTitle("");
+            setAuthor("");
+            router.refresh();
+          } catch (er) {
+            setErr(er instanceof ApiError ? er.message : "Couldn't add that book.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Book title" className="min-h-[48px] min-w-0 flex-1 rounded-xl bg-space px-3 text-base font-bold" />
+        <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Author (optional)" className="min-h-[48px] min-w-0 flex-1 rounded-xl bg-space px-3 text-base font-bold" />
+        <button className="btn btn-accent tap px-4" disabled={busy || !title.trim()}>
+          {busy ? "Finding…" : "Prep it"}
+        </button>
+      </form>
+      {err && <ErrorNote message={err} />}
+      <div className="text-ink-2 text-xs font-bold">
+        {counts.ready} ready · {counts.pending + counts.generating} in progress · {counts.failed} failed
+      </div>
+      <ul className="flex flex-col gap-1">
+        {shown.map((i) => (
+          <li key={i.id} className="flex items-center gap-2 rounded-xl bg-space px-3 py-2">
+            <span className={`chip shrink-0 text-xs ${i.status === "ready" ? "bg-[#1f6b46]" : i.status === "failed" ? "bg-[#6b2a3a]" : "bg-panel-2"}`}>{STATUS_LABEL[i.status]}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-bold">
+              {i.title}
+              {i.author ? <span className="text-ink-2"> · {i.author}</span> : null}
+            </span>
+            {i.status === "failed" && (
+              <button
+                type="button"
+                className="btn tap px-3 text-xs"
+                title={i.error ?? ""}
+                onClick={async () => {
+                  await post("/api/prep/retry", { id: i.id }).catch(() => {});
+                  router.refresh();
+                }}
+              >
+                Retry
+              </button>
+            )}
+          </li>
+        ))}
+        {!items.length && <li className="text-ink-2 text-sm font-bold">Nothing queued yet.</li>}
+      </ul>
+      {items.length > shown.length && (
+        <button type="button" className="btn btn-ghost tap self-start text-sm" onClick={() => setShowAll(true)}>
+          Show all {items.length}
+        </button>
+      )}
+    </section>
   );
 }
 

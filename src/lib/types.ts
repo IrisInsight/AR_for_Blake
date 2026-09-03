@@ -57,7 +57,29 @@ export interface Book {
   emoji: string | null;
   points: number;
   source: string;
+  format: string | null;
+  page_count: number | null;
+  year: number | null;
+  cover_url: string | null;
+  level_source: string | null;
+  word_count_source: string | null;
+  resolved_model: string | null;
+  resolved_at: string | null;
   created_at: string;
+}
+
+export type PrepStatus = "pending" | "generating" | "ready" | "failed";
+export interface PrepItem {
+  id: string;
+  title: string;
+  author: string | null;
+  book_id: string | null;
+  status: PrepStatus;
+  source: string;
+  error: string | null;
+  tries: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Question {

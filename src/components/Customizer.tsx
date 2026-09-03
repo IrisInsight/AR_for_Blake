@@ -8,6 +8,7 @@ import { ACCENT_COLORS, AVATARS, CATALOG, CATEGORY_LABELS, EXHAUST_COLORS, HULL_
 import { ApiError, post } from "@/lib/client";
 import { play } from "@/lib/sound";
 import type { Kid, RocketConfig } from "@/lib/types";
+import { NAME_MAX, cleanName, isClean } from "@/lib/wordfilter";
 
 type Tab = Category | "name" | "patch" | "you";
 const TABS: { id: Tab; label: string; emoji: string }[] = [
@@ -19,7 +20,6 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "engine", label: "Engine", emoji: "🔥" },
   { id: "exhaust", label: "Exhaust", emoji: "💨" },
   { id: "patch", label: "Patch", emoji: "🛡️" },
-  { id: "name", label: "Name", emoji: "✏️" },
   { id: "you", label: "You", emoji: "🧑‍🚀" },
 ];
 
@@ -122,8 +122,8 @@ export default function Customizer({ kid, milestones, stage }: { kid: Kid; miles
     <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:items-start">
       {/* Live preview */}
       <div className="panel relative flex min-w-0 flex-col items-center p-3 lg:sticky lg:top-3">
-        <div className="flex w-full items-center justify-between">
-          <div className="text-xl font-black">{cfg.name}</div>
+        <div className="flex w-full items-center justify-between gap-2">
+          <NameEditor value={cfg.name} onChange={(name) => setCfg((c) => ({ ...c, name }))} />
           <BoltsChip n={bolts} />
         </div>
         <div className={`w-full max-w-[240px] lg:max-w-[340px] ${flash ? "anim-pop" : ""}`}>
@@ -161,20 +161,6 @@ export default function Customizer({ kid, milestones, stage }: { kid: Kid; miles
         </div>
         {err && <ErrorNote message={err} />}
 
-        {tab === "name" && (
-          <div className="panel flex flex-col gap-2 p-4">
-            <label className="font-extrabold" htmlFor="rocket-name">Paint a name on the hull</label>
-            <input
-              id="rocket-name"
-              value={cfg.name}
-              maxLength={14}
-              onChange={(e) => setCfg((c) => ({ ...c, name: e.target.value }))}
-              className="min-h-[52px] rounded-2xl bg-space px-4 text-lg font-extrabold"
-            />
-            <p className="text-ink-2 text-xs font-bold">Up to 14 letters. It saves by itself.</p>
-          </div>
-        )}
-
         {tab === "patch" && (
           <div className="flex flex-col gap-3">
             <div className="panel flex items-center gap-4 p-4">
@@ -194,7 +180,7 @@ export default function Customizer({ kid, milestones, stage }: { kid: Kid; miles
 
         {tab === "you" && <YouTab kid={kid} onSaved={() => router.refresh()} />}
 
-        {tab !== "name" && tab !== "patch" && tab !== "you" && (
+        {tab !== "patch" && tab !== "you" && (
           <ItemGrid
             items={items}
             title={CATEGORY_LABELS[tab as Category]}
@@ -207,6 +193,60 @@ export default function Customizer({ kid, milestones, stage }: { kid: Kid; miles
         )}
       </div>
     </div>
+  );
+}
+
+function NameEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [bad, setBad] = useState(false);
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setDraft(value);
+          setEditing(true);
+        }}
+        className="tap flex min-w-0 items-center gap-2 rounded-2xl bg-space px-3 py-2 text-left"
+        aria-label="Rename your rocket"
+      >
+        <span className="truncate text-xl font-black">{value || "Name your rocket"}</span>
+        <span className="text-ink-2 shrink-0 text-sm font-bold">✏️ rename</span>
+      </button>
+    );
+  }
+  return (
+    <form
+      className="flex min-w-0 flex-1 flex-col gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const v = cleanName(draft);
+        if (!v) return setEditing(false);
+        if (!isClean(v)) return setBad(true);
+        onChange(v);
+        setEditing(false);
+        setBad(false);
+        play("attach");
+      }}
+    >
+      <div className="flex gap-2">
+        <input
+          autoFocus
+          value={draft}
+          maxLength={NAME_MAX}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setBad(false);
+          }}
+          placeholder="Rocket name"
+          className="min-h-[48px] min-w-0 flex-1 rounded-xl bg-space px-3 text-lg font-extrabold"
+          aria-label="Rocket name"
+        />
+        <button className="btn btn-accent tap px-4 text-base">Paint it</button>
+      </div>
+      <p className={`text-xs font-bold ${bad ? "text-[#ff8a8a]" : "text-ink-2"}`}>{bad ? "That one isn't allowed on a rocket. Try another." : `Free. Up to ${NAME_MAX} letters.`}</p>
+    </form>
   );
 }
 

@@ -2,6 +2,7 @@ import { CATALOG, DEFAULT_ROCKET, PATCH_COLORS, ownsItem, type Category } from "
 import { getKid, updateKid } from "@/lib/db";
 import { body, HttpError, ok, route, str } from "@/lib/http";
 import type { RocketConfig } from "@/lib/types";
+import { cleanName, isClean } from "@/lib/wordfilter";
 
 /** Save a rocket config. Every chosen part must be free or owned. */
 export const POST = route(async (req) => {
@@ -17,6 +18,8 @@ export const POST = route(async (req) => {
   const cur = kid.rocket;
   const patch = r.patch ?? cur.patch;
   const color = (c: unknown, fb: string) => (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) && PATCH_COLORS.includes(c.toLowerCase()) ? c.toLowerCase() : fb);
+  const wanted = cleanName(String(r.name ?? cur.name ?? DEFAULT_ROCKET.name));
+  if (wanted && !isClean(wanted)) throw new HttpError(400, "That name isn't allowed on a rocket. Pick another.");
   const rocket: RocketConfig = {
     hull: pick("hull", r.hull, cur.hull),
     nose: pick("nose", r.nose, cur.nose) as RocketConfig["nose"],
@@ -25,7 +28,7 @@ export const POST = route(async (req) => {
     booster: pick("booster", r.booster, cur.booster) as RocketConfig["booster"],
     engine: pick("engine", r.engine, cur.engine) as RocketConfig["engine"],
     exhaust: pick("exhaust", r.exhaust, cur.exhaust) as RocketConfig["exhaust"],
-    name: String(r.name ?? cur.name ?? DEFAULT_ROCKET.name).replace(/[^\w\s'!\-]/g, "").trim().slice(0, 14) || cur.name,
+    name: wanted || cur.name,
     patch: {
       shape: pick("patch_shape", patch.shape, cur.patch.shape) as RocketConfig["patch"]["shape"],
       icon: pick("patch_icon", patch.icon, cur.patch.icon),

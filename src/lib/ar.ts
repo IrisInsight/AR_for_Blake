@@ -64,6 +64,35 @@ export const LEVEL_COPY: Record<LevelLabel, { label: string; blurb: string }> = 
   challenge: { label: "Challenge", blurb: "A bigger mission. Extra brave." },
 };
 
+/** Book formats and words per page. Word counts come from AR BookFinder when Claude finds them, and are
+ * clamped to the format's ceiling so a 200-page graphic novel can never score like a 50,000-word novel. */
+export const FORMATS = {
+  picture: { label: "Picture book", min: 30, mid: 40, max: 60, pages: 32 },
+  graphic_novel: { label: "Graphic novel / comic", min: 30, mid: 35, max: 60, pages: 200 },
+  early_reader: { label: "Early reader", min: 80, mid: 100, max: 120, pages: 32 },
+  early_chapter: { label: "Early chapter book", min: 150, mid: 175, max: 200, pages: 80 },
+  illustrated_novel: { label: "Illustrated novel", min: 80, mid: 100, max: 140, pages: 220 },
+  middle_grade: { label: "Middle grade novel", min: 225, mid: 240, max: 250, pages: 200 },
+  long_novel: { label: "Long novel / YA", min: 250, mid: 260, max: 275, pages: 350 },
+} as const;
+export type BookFormat = keyof typeof FORMATS;
+export const FORMAT_IDS = Object.keys(FORMATS) as BookFormat[];
+
+export function isFormat(v: unknown): v is BookFormat {
+  return typeof v === "string" && v in FORMATS;
+}
+
+/** Final word count from what Claude found plus the format rules. */
+export function finalWordCount(format: BookFormat, pages: number | null, found: number | null, source: string): { words: number; source: "ar" | "estimate" } {
+  const f = FORMATS[format];
+  const p = pages && pages > 0 ? pages : f.pages;
+  const ceiling = p * f.max;
+  if (source === "ar" && found && found > 0) {
+    return { words: Math.min(Math.round(found), ceiling), source: "ar" };
+  }
+  return { words: Math.round(p * f.mid), source: "estimate" };
+}
+
 /** Length buckets for books the family adds by hand. */
 export const LENGTH_BUCKETS = {
   picture: { label: "Picture book", words: 800 },
