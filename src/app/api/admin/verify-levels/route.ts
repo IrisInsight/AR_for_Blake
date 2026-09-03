@@ -16,7 +16,8 @@ const KNOWN = [
 
 /** Resolve each known book fresh with the requested model and report drift. ?model=haiku|sonnet */
 export const GET = route(async (req) => {
-  const model = new URL(req.url).searchParams.get("model") === "sonnet" ? "sonnet" : "haiku";
+  const m = new URL(req.url).searchParams.get("model");
+  const model = m === "sonnet" ? "sonnet" : m === "haiku" ? "haiku" : undefined; // undefined = production path (Haiku, Sonnet fallback)
   const results = await Promise.all(
     KNOWN.map(async (k) => {
       try {
@@ -30,5 +31,5 @@ export const GET = route(async (req) => {
       }
     }),
   );
-  return ok({ model, pass: results.filter((r) => r.okLevel && r.okPts).length, total: results.length, results });
+  return ok({ model: model ?? "auto", pass: results.filter((r) => r.okLevel && r.okPts).length, total: results.length, results });
 });
