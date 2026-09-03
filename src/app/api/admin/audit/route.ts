@@ -23,7 +23,9 @@ async function run(all: boolean) {
   const changes = [];
   for (const b of books) {
     const inflated = isFormat(b.format) && b.page_count ? b.word_count > b.page_count * FORMATS[b.format].max : false;
-    if (!all && b.format && !inflated) continue;
+    const unsourced = b.word_count_source !== "ar" || b.level_source !== "ar";
+    if (!all && b.format && !inflated && !unsourced && b.source !== "manual") continue;
+    if (b.source === "manual") continue;
     const before = { atos: b.atos, words: b.word_count, points: b.points, format: b.format };
     try {
       const { book } = await resolveBook({ title: b.title, author: b.author, pages: b.page_count, year: b.year, cover: b.cover_url }, { force: true, source: b.source });

@@ -84,6 +84,7 @@ export async function searchOpenLibrary(q: string, limit = 8): Promise<Candidate
     const pages = typeof d.number_of_pages_median === "number" ? d.number_of_pages_median : null;
     if (pages) score += 0.5;
     if (pages && pages > 700) score -= 4; // box sets and omnibus editions
+    if (/collection|box set|boxed set|omnibus|treasury|winglets|\d+ books/i.test(title)) score -= 4;
     score += Math.min(3, (authorCount.get(author) ?? 1) - 1);
     out.push({
       key,

@@ -1,5 +1,16 @@
 # Build notes
 
+## Round two (search speed, formats, prep queue, gate)
+
+- **Catalog search.** Open Library is the catalog (Google Books returns 429 from Vercel without an API key, so it is only a fallback and needs `GOOGLE_BOOKS_KEY` to be useful). Open Library's relevance is weak for kid queries, so results are re-ranked: exact title match, children's subjects, repeated series authors, recent years, and a penalty for box sets, omnibus editions and novellas. Books already in the database (seeded series, past reads) are searched first and appear instantly; the catalog results merge in behind them.
+- **Levels.** Haiku 4.5 with web search resolves each card in parallel (about 8 to 10 seconds). Verified against known AR values, Haiku is right on the famous titles but drifts when it has to estimate, so any result not backed by an AR page (level or word count) goes to Sonnet 5 for that book. Seven famous titles (the five Harry Potter books, Charlotte's Web, Diary of a Wimpy Kid) are hard-coded from AR BookFinder and never touch a model.
+- **Formats.** Every resolved book carries a format; word counts from AR are clamped to the format's ceiling and estimates use the middle of the range: picture 40, graphic novel 35, early reader 100, early chapter 175, illustrated novel 100, middle grade 240, long novel 260 words per page. I added `illustrated_novel` for Wimpy Kid style books, which the brief did not list, because 240 words per page is wildly wrong for them.
+- **Prep queue.** Three books at a time, self-chaining through Vercel `after()`. Sources: grown-up corner, the seed list, series warming, and "next in series" when a quiz is finished.
+- **Gate.** One family code in `settings`. The shareable link carries it as `?code=`; the proxy swaps it for a cookie and strips it from the URL. API calls without the cookie get a 401. If the database is unreachable the gate fails open rather than locking the family out.
+- **Rocket name.** Free, 20 characters, tap-to-rename at the top of the shop, with a small profanity filter that also catches leetspeak.
+- **Database migration (item 5).** Blocked: the only Supabase org I can reach is on the Pro plan, where every project costs $10/month, and I have no credentials for Neon. See the checklist.
+- **Branch rename (item 7).** `main` is pushed and identical to the build branch, but changing the repository's default branch and Vercel's production branch needs the dashboards. See the checklist.
+
 ## Update: single reader
 
 Brooklyn was dropped at your request. The root URL now opens Blake's dashboard directly with the title "Blake's Rocket Reader Challenge" (home-screen name "Rocket Reader"). The shared space station became Blake's own long-term build: every lifetime point he earns adds to it and each level unlocks a shop part. The kids table still supports more than one reader if that ever changes; only the front door assumes one.
