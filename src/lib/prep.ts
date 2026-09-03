@@ -7,7 +7,7 @@ import { getFamilyCode } from "./gate";
 import type { Provider } from "./bookapis";
 import type { PrepItem } from "./types";
 
-export const BATCH = 3;
+export const BATCH = 5;
 const STALE_MS = 8 * 60 * 1000; // a row generating longer than this belongs to a dead invocation
 
 export async function provider(): Promise<Provider> {

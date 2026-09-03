@@ -177,8 +177,8 @@ async function generateOnce(book: BookForQuiz, kind: "main" | "bonus", n: number
     purpose: `quiz_${kind}`,
     system: quizSystem(n, book.atos, kind === "bonus"),
     user: desc,
-    maxSearches: 8,
-    effort: "high",
+    maxSearches: 6,
+    effort: "medium",
     maxTokens: 16000,
   });
   const arr = extractJson<unknown>(text);
