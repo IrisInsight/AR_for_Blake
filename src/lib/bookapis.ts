@@ -24,31 +24,71 @@ function baseTitle(t: string): string {
   return clean(t.replace(/\s*[\(\[].*?[\)\]]\s*/g, " ").split(":")[0]);
 }
 
-export async function searchOpenLibrary(q: string, limit = 8): Promise<Candidate[]> {
+const KID_SUBJECTS = /juvenile|children|kids|comic|graphic novel|picture book|early reader|chapter book|young adult|middle grade/i;
+
+interface Scored extends Candidate {
+  score: number;
+}
+
+async function olQuery(params: Record<string, string>): Promise<Record<string, unknown>[]> {
   const url = new URL("https://openlibrary.org/search.json");
-  url.searchParams.set("q", q);
-  url.searchParams.set("limit", String(limit * 2));
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   url.searchParams.set("language", "eng");
-  url.searchParams.set("fields", "key,title,author_name,first_publish_year,number_of_pages_median,cover_i,edition_count");
+  url.searchParams.set("fields", "key,title,author_name,first_publish_year,number_of_pages_median,cover_i,edition_count,subject");
   const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(6000) });
   if (!res.ok) throw new Error(`Open Library ${res.status}`);
   const data = (await res.json()) as { docs: Record<string, unknown>[] };
-  const out: Candidate[] = [];
-  for (const d of data.docs ?? []) {
+  return data.docs ?? [];
+}
+
+function squash(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** Open Library: a title query and a general query in parallel, then re-ranked for children's books. */
+export async function searchOpenLibrary(q: string, limit = 8): Promise<Candidate[]> {
+  const [byTitle, general] = await Promise.all([
+    olQuery({ title: q, limit: "12" }).catch(() => []),
+    olQuery({ q, limit: "12" }).catch(() => []),
+  ]);
+  if (!byTitle.length && !general.length) throw new Error("Open Library returned nothing");
+  const sq = squash(q);
+  const out: Scored[] = [];
+  const seen = new Set<string>();
+  for (const d of [...byTitle, ...general]) {
     const title = clean(String(d.title ?? ""));
     const author = Array.isArray(d.author_name) ? clean(String(d.author_name[0] ?? "")) : "";
     if (!title || !author) continue;
+    const key = normKey(baseTitle(title), author);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const st = squash(title);
+    const subjects = Array.isArray(d.subject) ? (d.subject as string[]).slice(0, 40).join(" | ") : "";
+    const year = typeof d.first_publish_year === "number" ? d.first_publish_year : null;
+    const editions = typeof d.edition_count === "number" ? d.edition_count : 0;
+    let score = 0;
+    if (st === sq) score += 6;
+    else if (st.startsWith(sq)) score += 4;
+    else if (st.includes(sq)) score += 2;
+    else if (sq.split(" ").every((w) => st.includes(w))) score += 1;
+    if (KID_SUBJECTS.test(subjects)) score += 3;
+    if (year && year >= 1995) score += 1;
+    if (year && year < 1940) score -= 1;
+    if (editions >= 5) score += 0.5;
+    if (typeof d.number_of_pages_median === "number") score += 0.5;
     out.push({
-      key: normKey(baseTitle(title), author),
+      key,
       title,
       author,
       pages: typeof d.number_of_pages_median === "number" ? d.number_of_pages_median : null,
-      year: typeof d.first_publish_year === "number" ? d.first_publish_year : null,
+      year,
       cover: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
       provider: "openlibrary",
+      score,
     });
   }
-  return dedupe(out).slice(0, limit);
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, limit).map(({ score: _s, ...c }) => c);
 }
 
 export async function searchGoogleBooks(q: string, limit = 8): Promise<Candidate[]> {

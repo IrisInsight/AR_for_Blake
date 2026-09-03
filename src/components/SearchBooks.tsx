@@ -36,10 +36,21 @@ export default function SearchBooks({ kidId, zpd }: { kidId: string; zpd: [numbe
     setErr(null);
     setCards(null);
     try {
-      const res = await post<{ cards: Card[] }>("/api/search", { q, kidId });
+      // Instant: books already resolved (seeded series, past reads). Then the catalog, merged in.
+      const localP = post<{ cards: Card[] }>("/api/search/local", { q, kidId }).catch(() => ({ cards: [] as Card[] }));
+      const catalogP = post<{ cards: Card[] }>("/api/search", { q, kidId });
+      const local = await localP;
       if (my !== seq.current) return;
-      setCards(res.cards);
-      const pending = res.cards.filter((c) => !c.book);
+      if (local.cards.length) {
+        setCards(local.cards);
+        setPhase("levels");
+      }
+      const res = await catalogP;
+      if (my !== seq.current) return;
+      const seen = new Set(local.cards.map((c) => c.key));
+      const merged = [...local.cards, ...res.cards.filter((c) => !seen.has(c.key))].slice(0, 8);
+      setCards(merged);
+      const pending = merged.filter((c) => !c.book);
       setPhase(pending.length ? "levels" : "done");
       // Resolve levels in parallel and fill each card in place.
       await Promise.all(

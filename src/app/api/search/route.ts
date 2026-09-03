@@ -19,14 +19,23 @@ function normQ(q: string): string {
 /** Sub-second candidate list from a public catalog, with cached resolutions attached. No AI here. */
 export const POST = route(async (req) => {
   const b = await body(req);
-  const q = str(b.q, "Search", 120);
-  const kid = await getKid(str(b.kidId, "kidId"));
+  return search(str(b.q, "Search", 120), str(b.kidId, "kidId"));
+});
+
+export const GET = route(async (req) => {
+  const u = new URL(req.url);
+  return search(str(u.searchParams.get("q"), "Search", 120), u.searchParams.get("kidId") ?? "blake", u.searchParams.get("nocache") === "1");
+});
+
+async function search(q: string, kidId: string, nocache = false) {
+  const t0 = Date.now();
+  const kid = await getKid(kidId);
   if (!kid) throw new HttpError(404, "Kid not found");
   const nq = normQ(q);
   let candidates: Candidate[] = [];
   let prov = "cache";
   let ms = 0;
-  const cached = await getSearchCache(nq);
+  const cached = nocache ? null : await getSearchCache(nq);
   if (cached) {
     candidates = cached.results as Candidate[];
     prov = `cache:${cached.provider}`;
@@ -46,8 +55,8 @@ export const POST = route(async (req) => {
       return { ...c, book: book && book.resolved_at ? { ...book, level: levelLabel(book.atos, kid.grade) } : null };
     }),
   );
-  return ok({ cards, provider: prov, ms });
-});
+  return ok({ cards, provider: prov, ms, totalMs: Date.now() - t0 });
+}
 
 function mockCandidates(q: string): Candidate[] {
   const all: Candidate[] = [

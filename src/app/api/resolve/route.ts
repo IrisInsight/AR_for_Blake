@@ -9,7 +9,16 @@ export const maxDuration = 120;
 /** Level, format, word count and points for one candidate. Cached forever; warms the series behind it. */
 export const POST = route(async (req) => {
   const b = await body(req);
-  const kid = await getKid(str(b.kidId, "kidId"));
+  return resolve(b);
+});
+
+export const GET = route(async (req) => {
+  const u = new URL(req.url);
+  return resolve(Object.fromEntries(u.searchParams.entries()));
+});
+
+async function resolve(b: Record<string, unknown>) {
+  const kid = await getKid(str(b.kidId ?? "blake", "kidId"));
   if (!kid) throw new HttpError(404, "Kid not found");
   const input = {
     title: str(b.title, "Title", 160),
@@ -32,4 +41,4 @@ export const POST = route(async (req) => {
     });
   }
   return ok({ book: { ...book, level: levelLabel(book.atos, kid.grade) }, cached, model, ms });
-});
+}

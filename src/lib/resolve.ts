@@ -5,6 +5,7 @@ import { bookPoints, FORMAT_IDS, finalWordCount, isFormat, normKey, type BookFor
 import { getBookByKey, insertWarmedSeries, isSeriesWarmed, upsertBook, updateBook } from "./db";
 import { searchCatalog, type Candidate, type Provider } from "./bookapis";
 import type { Book } from "./types";
+import { knownBook } from "./known";
 
 export interface ResolveInput {
   title: string;
@@ -24,6 +25,7 @@ interface Looked {
   description: string;
   emoji: string;
   confidence: number;
+  level_source?: "ar" | "estimate";
   title?: string;
   author?: string;
   pages?: number | null;
@@ -32,12 +34,14 @@ interface Looked {
 const LEVEL_SYSTEM = `You look up reading data for children's books for a family reading app. You are given a title, author, and sometimes a page count and year.
 
 Do this, in order:
-1. Search for "<title> <author> AR BookFinder" (or "<title> ATOS level word count"). AR BookFinder lists "ATOS Book Level", "Word Count" and sometimes "Series". Use those numbers when you find them.
+1. Search for "<title> <author> AR BookFinder". AR BookFinder (arbookfind.com) lists "ATOS Book Level", "AR Points", "Word Count" and sometimes "Series". Use those numbers when you find them.
+   If the first search does not show the word count, search again for "<title> word count" and read the number from a reliable page (arbookfind.com, renaissance.com, readinglength.com, wordsrated.com, a publisher or school library page). A count from one of those pages counts as source "other".
 2. Decide the format from what you learn about the book. One of: picture (picture book), graphic_novel (comics, graphic novels, Dog Man, InvestiGators, Amulet, Bone, Narwhal and Jelly), early_reader (leveled readers like Fly Guy, Elephant and Piggie), early_chapter (short chapter books like Magic Tree House, Junie B. Jones, Mercy Watson, Dragon Masters, Press Start), illustrated_novel (notebook-style novels with a drawing on most pages like Diary of a Wimpy Kid, Big Nate, Last Kids on Earth, Captain Underpants, Diary of an 8-Bit Warrior), middle_grade (regular novels for ages 8-12), long_novel (300+ page novels and YA).
-3. If AR lists a word count, return it with word_count_source "ar". If you only find an estimate or nothing, set word_count to null and word_count_source "unknown". Never guess a word count.
+3. Return the word count with word_count_source "ar" (AR BookFinder or Renaissance) or "other" (another published count). If you find nothing, set word_count to null and word_count_source "unknown". Never guess or compute a word count yourself.
+5. Set level_source to "ar" when the ATOS level came from AR BookFinder or Renaissance, otherwise "estimate".
 4. If AR lists no level, estimate the ATOS level from the publisher's age range or a Lexile if found (Lexile 400 ≈ 2.5, 600 ≈ 3.5, 800 ≈ 5.0, 1000 ≈ 7.0) and lower your confidence.
 
-Return only JSON: {"atos": 2.6, "word_count": 4346, "word_count_source": "ar", "format": "graphic_novel", "series": "Dog Man", "series_number": 1, "description": "one spoiler-free sentence for a kid", "emoji": "🐶", "confidence": 0.9}
+Return only JSON: {"atos": 2.6, "level_source": "ar", "word_count": 4346, "word_count_source": "ar", "format": "graphic_novel", "series": "Dog Man", "series_number": 1, "description": "one spoiler-free sentence for a kid", "emoji": "🐶", "confidence": 0.9}
 confidence is 0 to 1: how sure you are that atos and format are right for this exact book.`;
 
 const SERIES_SYSTEM = `You look up children's book series for a family reading app. Given a series name, an author, and a book number, list the NEXT five books in that series (numbers n+1 through n+5), in order. For each, search AR BookFinder for the ATOS book level and word count. Use the same format rules as a librarian would: picture, graphic_novel, early_reader, early_chapter, illustrated_novel, middle_grade, long_novel.
@@ -50,7 +54,7 @@ function parseLooked(raw: unknown): Looked | null {
   const r = raw as Record<string, unknown>;
   const atos = Number(r.atos);
   const wc = r.word_count == null ? null : Number(r.word_count);
-  const src = r.word_count_source === "ar" ? "ar" : r.word_count_source === "estimate" ? "estimate" : "unknown";
+  const src = r.word_count_source === "ar" || r.word_count_source === "other" ? "ar" : "unknown";
   return {
     atos: Number.isFinite(atos) && atos > 0 ? Math.max(0.5, Math.min(12, Math.round(atos * 10) / 10)) : null,
     word_count: wc != null && Number.isFinite(wc) && wc > 0 ? Math.round(wc) : null,
@@ -61,6 +65,7 @@ function parseLooked(raw: unknown): Looked | null {
     description: String(r.description ?? "").slice(0, 200),
     emoji: firstEmoji(String(r.emoji ?? "")) ?? "📖",
     confidence: Number.isFinite(Number(r.confidence)) ? Math.max(0, Math.min(1, Number(r.confidence))) : 0.5,
+    level_source: r.level_source === "ar" ? "ar" : "estimate",
     title: r.title ? String(r.title).slice(0, 160) : undefined,
     author: r.author ? String(r.author).slice(0, 120) : undefined,
     pages: r.pages == null ? null : Number(r.pages) || null,
@@ -77,7 +82,7 @@ async function lookup(model: string, input: ResolveInput): Promise<Looked | null
     purpose: model === HAIKU ? "level_haiku" : "level_sonnet",
     system: LEVEL_SYSTEM,
     user: describe(input),
-    maxSearches: model === HAIKU ? 3 : 5,
+    maxSearches: model === HAIKU ? 4 : 6,
     effort: "medium",
     maxTokens: 1500,
   });
@@ -104,14 +109,19 @@ export async function resolveBook(input: ResolveInput, opts: ResolveOpts = {}): 
   const t0 = Date.now();
   let looked: Looked | null = null;
   let model = mockMode() ? "mock" : HAIKU;
-  if (mockMode()) {
+  const known = knownBook(input.title, input.author);
+  if (known) {
+    model = "known";
+    looked = { atos: known.atos, word_count: known.words, word_count_source: "ar", format: known.format, series: known.series ?? null, series_number: known.n ?? null, description: "", emoji: known.emoji ?? "📖", confidence: 1, level_source: "ar" };
+  } else if (mockMode()) {
     looked = mockLooked(input);
   } else if (opts.model === "sonnet") {
     model = SONNET;
     looked = await lookup(SONNET, input);
   } else {
     looked = await lookup(HAIKU, input);
-    const shaky = !looked || looked.atos == null || looked.format == null || looked.confidence < 0.6;
+    // Haiku is fast but drifts when it has to estimate. Anything not backed by an AR page goes to Sonnet.
+    const shaky = !looked || looked.atos == null || looked.format == null || looked.confidence < 0.6 || looked.word_count_source === "unknown" || looked.level_source !== "ar";
     if (shaky && opts.model !== "haiku") {
       model = SONNET;
       const better = await lookup(SONNET, input);
@@ -138,12 +148,13 @@ export async function resolveBook(input: ResolveInput, opts: ResolveOpts = {}): 
     page_count: pages,
     year: input.year ?? null,
     cover_url: input.cover ?? null,
-    level_source: looked.confidence >= 0.6 ? "ar" : "estimate",
+    level_source: looked.level_source ?? (looked.confidence >= 0.6 ? "ar" : "estimate"),
     word_count_source: wc.source,
     resolved_model: model,
     resolved_at: new Date().toISOString(),
   };
   const existing = await getBookByKey(key);
+  if (existing && !row.description) row.description = existing.description;
   let book: Book;
   if (existing) {
     await updateBook(existing.id, row);
