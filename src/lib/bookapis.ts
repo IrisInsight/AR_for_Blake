@@ -55,6 +55,12 @@ export async function searchOpenLibrary(q: string, limit = 8): Promise<Candidate
   const sq = squash(q);
   const out: Scored[] = [];
   const seen = new Set<string>();
+  // Series authors show up many times in the results; that's the strongest hint of a kid series.
+  const authorCount = new Map<string, number>();
+  for (const d of [...byTitle, ...general]) {
+    const a = Array.isArray(d.author_name) ? String(d.author_name[0] ?? "") : "";
+    if (a) authorCount.set(a, (authorCount.get(a) ?? 0) + 1);
+  }
   for (const d of [...byTitle, ...general]) {
     const title = clean(String(d.title ?? ""));
     const author = Array.isArray(d.author_name) ? clean(String(d.author_name[0] ?? "")) : "";
@@ -75,12 +81,15 @@ export async function searchOpenLibrary(q: string, limit = 8): Promise<Candidate
     if (year && year >= 1995) score += 1;
     if (year && year < 1940) score -= 1;
     if (editions >= 5) score += 0.5;
-    if (typeof d.number_of_pages_median === "number") score += 0.5;
+    const pages = typeof d.number_of_pages_median === "number" ? d.number_of_pages_median : null;
+    if (pages) score += 0.5;
+    if (pages && pages > 700) score -= 4; // box sets and omnibus editions
+    score += Math.min(3, (authorCount.get(author) ?? 1) - 1);
     out.push({
       key,
       title,
       author,
-      pages: typeof d.number_of_pages_median === "number" ? d.number_of_pages_median : null,
+      pages,
       year,
       cover: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
       provider: "openlibrary",
