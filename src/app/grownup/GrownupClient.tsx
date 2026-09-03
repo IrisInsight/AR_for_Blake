@@ -66,7 +66,7 @@ export default function GrownupClient({ kids, attempts, ledgers, keyOk }: { kids
 
       <section>
         <h2 className="px-1 text-lg font-extrabold">Quiz history</h2>
-        <p className="text-ink-2 px-1 pb-2 text-sm font-bold">Clearing a quiz lets the kid take it again. Points from a cleared quiz are removed; bolts and badges stay.</p>
+        <p className="text-ink-2 px-1 pb-2 text-sm font-bold">Clearing a quiz lets Blake take it again. Points from a cleared quiz are removed; bolts and badges stay.</p>
         <ul className="flex flex-col gap-2">
           {attempts.map((a) => {
             const kid = kids.find((k) => k.id === a.kidId);

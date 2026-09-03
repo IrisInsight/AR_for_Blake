@@ -110,7 +110,7 @@ export interface RawBook {
   emoji: string;
 }
 
-const SEARCH_SYSTEM = `You are the book lookup service for a children's reading app used by an 8-year-old and a 10-year-old. A kid types the title (sometimes misspelled, sometimes just a series name or a character) of a book they just finished. Return up to 5 real, published books that best match.
+const SEARCH_SYSTEM = `You are the book lookup service for a children's reading app used by an 8-year-old boy in third grade. A kid types the title (sometimes misspelled, sometimes just a series name or a character) of a book they just finished. Return up to 5 real, published books that best match.
 
 Use web search to verify each book's ATOS book level (as listed on AR BookFinder or the publisher) and its word count. Search for "<title> AR BookFinder" or "<title> ATOS level word count". If a word count cannot be found, estimate it from page count and format (picture book ~600 words, early chapter book ~6,000-12,000, middle grade novel ~30,000-60,000) and say so by rounding to a plausible number. Match the exact edition and author; many children's titles are reused.
 

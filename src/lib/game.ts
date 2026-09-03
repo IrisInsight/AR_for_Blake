@@ -112,23 +112,23 @@ export function hadBookLastWeek(attempts: Attempt[], now = new Date()): boolean 
   return attempts.some((a) => a.status === "passed" && a.completed_at && weekOf(a.completed_at) === last);
 }
 
-// ---------- Space station (co-op) ----------
+// ---------- Space station (long-term build from lifetime points) ----------
 export interface StationLevel {
   level: number;
   min: number;
   name: string;
   blurb: string;
-  unlock: string; // human description of what both kids get
+  unlock: string; // human description of the shop part this level unlocks
 }
 export const STATION_LEVELS: StationLevel[] = [
   { level: 0, min: 0, name: "Launch pad", blurb: "Just a platform in orbit. Read to build it up.", unlock: "" },
-  { level: 1, min: 10, name: "Core module", blurb: "The first room. Somebody has to sleep somewhere.", unlock: "Station patch icon for both rockets" },
-  { level: 2, min: 25, name: "Solar wings", blurb: "Big shiny panels. Now there's power.", unlock: "Chrome paint for both rockets" },
-  { level: 3, min: 50, name: "Docking ring", blurb: "Room for two rockets to park at once.", unlock: "Comet trail exhaust for both" },
-  { level: 4, min: 90, name: "Greenhouse dome", blurb: "Space tomatoes. Space strawberries.", unlock: "Alien two-tone paint for both" },
-  { level: 5, min: 140, name: "Observatory", blurb: "A giant telescope pointed at the next planet.", unlock: "Quad boosters for both" },
-  { level: 6, min: 200, name: "Robot arm", blurb: "It waves at rockets as they fly by.", unlock: "Crown patch icon for both" },
-  { level: 7, min: 300, name: "Warp core", blurb: "The whole station hums. Anywhere is reachable now.", unlock: "Galaxy paint for both" },
+  { level: 1, min: 10, name: "Core module", blurb: "The first room. Somebody has to sleep somewhere.", unlock: "Station patch icon" },
+  { level: 2, min: 25, name: "Solar wings", blurb: "Big shiny panels. Now there's power.", unlock: "Chrome paint" },
+  { level: 3, min: 50, name: "Docking ring", blurb: "Room for a whole fleet to park.", unlock: "Comet trail exhaust" },
+  { level: 4, min: 90, name: "Greenhouse dome", blurb: "Space tomatoes. Space strawberries.", unlock: "Alien two-tone paint" },
+  { level: 5, min: 140, name: "Observatory", blurb: "A giant telescope pointed at the next planet.", unlock: "Quad boosters" },
+  { level: 6, min: 200, name: "Robot arm", blurb: "It waves at rockets as they fly by.", unlock: "Crown patch icon" },
+  { level: 7, min: 300, name: "Warp core", blurb: "The whole station hums. Anywhere is reachable now.", unlock: "Galaxy paint" },
 ];
 export function stationFor(combined: number) {
   let cur = STATION_LEVELS[0];

@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Rocket from "@/components/Rocket";
-import { TopBar, Panel, SectionTitle } from "@/components/ui";
+import { Panel, SectionTitle } from "@/components/ui";
+import SoundToggle from "@/components/SoundToggle";
+import { hasApiKey, mockMode } from "@/lib/ai";
+import { NO_KEY_MESSAGE } from "@/lib/http";
 import { avatarEmoji } from "@/lib/catalog";
 import { fmtPts } from "@/lib/ar";
 import { kidState } from "@/lib/engine";
@@ -20,11 +23,35 @@ export default async function Dashboard({ params }: { params: Promise<{ kidId: s
 
   return (
     <main className="safe-x safe-bottom mx-auto max-w-5xl">
-      <TopBar back="/" title={`${avatarEmoji(kid.avatar)} ${kid.name}`} bolts={kid.bolts} />
+      <header className="safe-top pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-ink-2 flex min-w-0 items-center gap-2 text-lg font-extrabold">
+            <span className="text-3xl" aria-hidden>{avatarEmoji(kid.avatar)}</span>
+            <span className="truncate">{kid.name}&apos;s</span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="chip bg-panel-2 text-bolt"><span aria-hidden>🔩</span><span className="numeral text-base">{kid.bolts}</span></span>
+            <SoundToggle />
+            <Link href="/grownup" aria-label="Grown-up corner" className="tap grid h-11 w-11 place-items-center rounded-2xl bg-panel-2 text-xl">
+              ⚙️
+            </Link>
+          </div>
+        </div>
+        <h1 className="mt-1 text-[30px] font-black leading-[1.05] tracking-tight sm:text-4xl">Rocket Reader Challenge</h1>
+        <div className="text-ink-2 mt-1 text-sm font-bold">
+          {rank.emoji} {rank.name} · Grade {kid.grade}
+        </div>
+      </header>
+      {!hasApiKey() && !mockMode() && (
+        <div className="panel mb-4 border-2 border-[#ffd23f]/60 p-4 text-base">
+          <p className="font-extrabold">Almost ready.</p>
+          <p className="text-ink-2 mt-1">{NO_KEY_MESSAGE} Everything else works.</p>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:items-start">
         {/* Rocket hero */}
-        <div className="lg:sticky lg:top-3">
+        <div className="min-w-0 lg:sticky lg:top-3">
           <Panel className="flex flex-col items-center pt-3">
             <div className="flex w-full items-center justify-between px-1">
               <div>
@@ -66,7 +93,7 @@ export default async function Dashboard({ params }: { params: Promise<{ kidId: s
           </Panel>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           {inProgress ? (
             <Link href={`/k/${kid.id}/quiz/${inProgress.id}`} className="btn btn-accent btn-big">
               Finish your quiz: {inProgress.book.title}

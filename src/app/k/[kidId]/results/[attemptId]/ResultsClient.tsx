@@ -128,7 +128,7 @@ export default function ResultsClient({ kidId, attempt, rocket, goal, period, st
   return (
     <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
       {/* Rocket with celebration overlay */}
-      <div className="panel relative flex flex-col items-center overflow-hidden p-3">
+      <div className="panel relative flex min-w-0 flex-col items-center overflow-hidden p-3">
         {burst && !reduced && <StarBurst />}
         <div className="w-full max-w-[260px] lg:max-w-[340px]">
           <Rocket config={rocket} stage={shownStage} animateStage={snap} idPrefix="res" className="h-auto w-full" />
@@ -152,7 +152,7 @@ export default function ResultsClient({ kidId, attempt, rocket, goal, period, st
         </div>
       </div>
 
-      <div className="flex flex-col gap-3">
+      <div className="flex min-w-0 flex-col gap-3">
         {bonus ? (
           <div className={`panel anim-pop p-5 text-center ${bonus.won ? "border-2 border-[#ffd23f]/70" : ""}`}>
             <div className="text-6xl" aria-hidden>{bonus.won ? "🎯" : "🛡️"}</div>

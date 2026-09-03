@@ -1,5 +1,9 @@
 # Build notes
 
+## Update: single reader
+
+Brooklyn was dropped at your request. The root URL now opens Blake's dashboard directly with the title "Blake's Rocket Reader Challenge" (home-screen name "Rocket Reader"). The shared space station became Blake's own long-term build: every lifetime point he earns adds to it and each level unlocks a shop part. The kids table still supports more than one reader if that ever changes; only the front door assumes one.
+
 ## What I decided differently from the brief, and why
 
 1. **Database: a new Supabase project, $10/month.** Your Supabase org is on a paid plan where each extra project costs $10/month for compute. The alternative was sharing a database with one of your other apps, which I didn't want to do. Project `reader-rocket` in us-east-1, matching the Vercel function region (`iad1`) set in `vercel.json`. If you'd rather not pay for it, the schema in `supabase/migrations` will recreate the app on any Postgres with PostgREST in a minute.
@@ -10,7 +14,7 @@
 6. **Bonus pool is generated lazily**, right after a passing quiz (in the background while the celebration plays) rather than alongside the main pool, so a failed quiz never pays for bonus questions.
 7. **Ranks:** Cadet 0, Pilot 5, Navigator 15, Commander 30, Captain 50, Admiral 80, Star Marshal 120, Galactic Legend 200 lifetime points. Scaled so a third grader sees a promotion every few books early on.
 8. **Bolts:** 3 per passing quiz, +3 for 100%, +5 for a cleared bonus round, +4 weekly streak bonus (first book of a week when there was one the week before), +5 per badge, 5 to 10 per weekly mission. Bolts buy cosmetics only; nothing in the shop touches scoring.
-9. **Station unlocks are shop parts that become available to both kids** at a given station level (station patch icon, chrome paint, comet exhaust, alien paint, quad boosters, crown icon, galaxy paint). They still cost bolts.
+9. **Station unlocks are shop parts that become available** at a given station level (station patch icon, chrome paint, comet exhaust, alien paint, quad boosters, crown icon, galaxy paint). They still cost bolts.
 10. **Streak decay:** weekly fuel gauge gains 40 for a week with a book (+15 per extra book) and loses 30 for an empty week; it never snaps to zero after one quiet week.
 11. **"Restart current rocket"** (grown-up corner) keeps the books in the library but stops them counting toward the goal. **"Clear a quiz"** removes the attempt and its points so the kid can retry; bolts and badges already earned stay.
 12. **Mute** is stored per device (localStorage), not in the database, so an iPad can be quiet while a phone isn't.

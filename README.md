@@ -1,8 +1,8 @@
-# Reader Rocket
+# Blake's Rocket Reader Challenge
 
-A home version of Accelerated Reader for Brooklyn and Blake. Pick who's reading, find the book you just finished, take a comprehension quiz, earn points, build a rocket, launch it, discover a planet.
+A home version of Accelerated Reader for Blake. Open the app, find the book you just finished, take a comprehension quiz, earn points, build a rocket, launch it, discover a planet.
 
-Next.js (App Router) + TypeScript + Tailwind, Postgres on Supabase, Claude Sonnet 5 with web search for book lookup and quiz writing, deployed on Vercel. No accounts: open the URL and tap your name. Progress lives in the database, so it follows the kids across phones and iPads.
+Next.js (App Router) + TypeScript + Tailwind, Postgres on Supabase, Claude Sonnet 5 with web search for book lookup and quiz writing, deployed on Vercel. No accounts: open the URL and you are on Blake's dashboard. Progress lives in the database, so it follows him across phones and iPads.
 
 ## Environment variables
 
@@ -20,10 +20,11 @@ The only secret you have to touch is `ANTHROPIC_API_KEY`. Add it in Vercel → P
 
 Supabase project `reader-rocket` (`nuddxbupepsqgiytxbnh`, us-east-1). Schema lives in `supabase/migrations/`:
 
-- `0001_init.sql`: all tables, row-level-security policies, and the seed rows for Blake (grade 3) and Brooklyn (grade 5), both with a 20-point goal.
+- `0001_init.sql`: all tables, row-level-security policies, and the seed rows (originally two readers).
 - `0002_archived_attempts.sql`: `attempts.archived` for "restart current rocket".
+- `0003_single_reader.sql`: removes the second reader; the app is Blake's alone. Blake is grade 3 with a 20-point goal.
 
-Both migrations are already applied to the live project. To recreate on a fresh Supabase project, run the files in order in the SQL editor (or `supabase db push`), then set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
+All migrations are already applied to the live project. To recreate on a fresh Supabase project, run the files in order in the SQL editor (or `supabase db push`), then set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
 
 ## Local development
 

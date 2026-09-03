@@ -8,7 +8,6 @@ const g = globalThis as unknown as { __rrTables?: Record<string, Row[]> };
 const tables: Record<string, Row[]> = g.__rrTables ?? (g.__rrTables = {
   kids: [
     { id: "blake", name: "Blake", grade: 3, goal_points: 20, accent: "#ff7a1a", avatar: "astronaut", bolts: 0, lifetime_points: 0, carry_over: 0, owned: [], seen_flag_tip: false, sort_order: 0, created_at: new Date().toISOString(), rocket: { hull: "red", nose: "cone", fins: "swept", decal: "none", booster: "none", engine: "standard", exhaust: "orange", name: "Blake 1", patch: { shape: "circle", icon: "rocket", c1: "#ff7a1a", c2: "#1b2a4a" } } },
-    { id: "brooklyn", name: "Brooklyn", grade: 5, goal_points: 20, accent: "#c26cff", avatar: "cat", bolts: 0, lifetime_points: 0, carry_over: 0, owned: [], seen_flag_tip: false, sort_order: 1, created_at: new Date().toISOString(), rocket: { hull: "purple", nose: "rounded", fins: "delta", decal: "none", booster: "none", engine: "standard", exhaust: "orange", name: "Brooklyn 1", patch: { shape: "shield", icon: "star", c1: "#c26cff", c2: "#1b2a4a" } } },
   ],
   books: [], question_pools: [], planets: [], attempts: [], question_flags: [], kid_badges: [], missions: [], bolt_ledger: [],
 });

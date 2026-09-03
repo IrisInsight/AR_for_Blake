@@ -121,7 +121,7 @@ export default function Customizer({ kid, milestones, stage }: { kid: Kid; miles
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:items-start">
       {/* Live preview */}
-      <div className="panel relative flex flex-col items-center p-3 lg:sticky lg:top-3">
+      <div className="panel relative flex min-w-0 flex-col items-center p-3 lg:sticky lg:top-3">
         <div className="flex w-full items-center justify-between">
           <div className="text-xl font-black">{cfg.name}</div>
           <BoltsChip n={bolts} />
