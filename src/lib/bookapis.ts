@@ -19,6 +19,16 @@ function clean(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/** Tidy a catalog title for display: "Dog Man : a graphic novel (Dog Man #1)" -> "Dog Man". */
+export function cleanTitle(t: string): string {
+  return clean(t)
+    .replace(/\s*[\(\[][^\)\]]*(#\d+|book \d+|series|graphic novel|volume)[^\)\]]*[\)\]]/gi, "")
+    .replace(/\s*:\s*(a|the)?\s*graphic novel\s*$/i, "")
+    .replace(/\s+:\s+/g, ": ")
+    .replace(/\s+,/g, ",")
+    .trim();
+}
+
 /** Strip subtitle noise like "(Dog Man #1)" or ": A Graphic Novel" for the dedupe key. */
 function baseTitle(t: string): string {
   return clean(t.replace(/\s*[\(\[].*?[\)\]]\s*/g, " ").split(":")[0]);
@@ -62,7 +72,7 @@ export async function searchOpenLibrary(q: string, limit = 8): Promise<Candidate
     if (a) authorCount.set(a, (authorCount.get(a) ?? 0) + 1);
   }
   for (const d of [...byTitle, ...general]) {
-    const title = clean(String(d.title ?? ""));
+    const title = cleanTitle(String(d.title ?? ""));
     const author = Array.isArray(d.author_name) ? clean(String(d.author_name[0] ?? "")) : "";
     if (!title || !author) continue;
     const key = normKey(baseTitle(title), author);
@@ -114,7 +124,7 @@ export async function searchGoogleBooks(q: string, limit = 8): Promise<Candidate
   const out: Candidate[] = [];
   for (const it of data.items ?? []) {
     const v = it.volumeInfo ?? {};
-    const title = clean(String(v.title ?? ""));
+    const title = cleanTitle(String(v.title ?? ""));
     const author = Array.isArray(v.authors) ? clean(String(v.authors[0] ?? "")) : "";
     if (!title || !author) continue;
     const links = (v.imageLinks as Record<string, string>) ?? {};

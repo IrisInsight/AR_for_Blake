@@ -186,14 +186,12 @@ export async function resolveByTitle(title: string, author: string | null, provi
     const last = author.toLowerCase().split(" ").pop() ?? "";
     pick = res.candidates.find((c) => c.author.toLowerCase().includes(last)) ?? pick;
   }
+  // When the caller named the author and the catalog agrees, keep the caller's title: it was typed or
+  // seeded on purpose, and catalog titles carry noise like "#3 : a Graphic Novel".
+  const authorMatched = Boolean(pick && author && pick.author.toLowerCase().includes((author.toLowerCase().split(" ").pop() ?? "")));
   const input: ResolveInput = pick
-    ? { title: pick.title, author: pick.author, pages: pick.pages, year: pick.year, cover: pick.cover }
+    ? { title: authorMatched ? title : pick.title, author: authorMatched ? author! : pick.author, pages: pick.pages, year: pick.year, cover: pick.cover }
     : { title, author: author ?? "Unknown" };
-  // Keep the family's spelling of the title when the catalog found the same book under a longer name.
-  if (pick && author && normKey(title, author) !== pick.key) {
-    const direct = await getBookByKey(normKey(title, author));
-    if (direct?.resolved_at && !opts.force) return direct;
-  }
   return (await resolveBook(input, opts)).book;
 }
 
