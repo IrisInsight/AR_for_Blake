@@ -37,6 +37,8 @@ export async function proxy(req: NextRequest) {
   // If the database is unreachable we fail open rather than lock the family out.
   if (!expected) return NextResponse.next();
 
+  // Vercel cron pokes the prep worker; it can only process work that was queued from inside the gate.
+  if (url.pathname === "/api/prep/run" && (req.headers.get("user-agent") ?? "").startsWith("vercel-cron")) return NextResponse.next();
   const fromQuery = norm(url.searchParams.get("code"));
   if (fromQuery) {
     if (fromQuery === expected) {

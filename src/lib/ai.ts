@@ -84,7 +84,7 @@ export async function runWithSearch(opts: RunOpts): Promise<RunResult> {
   }
   const ms = Date.now() - t0;
   const cost = costUsd(opts.model, usage);
-  void logUsage({ model: opts.model, purpose: opts.purpose, ...usage, cost_usd: cost, ms }).catch(() => {});
+  await logUsage({ model: opts.model, purpose: opts.purpose, ...usage, cost_usd: cost, ms }).catch(() => {});
   return { text, usage, cost, ms };
 }
 
@@ -162,6 +162,15 @@ export interface BookForQuiz {
 export async function generateQuestions(book: BookForQuiz, kind: "main" | "bonus"): Promise<Question[]> {
   const n = kind === "main" ? MAIN_POOL_SIZE : BONUS_POOL_SIZE;
   if (mockMode()) return mockQuestions(book, n, kind);
+  try {
+    return await generateOnce(book, kind, n);
+  } catch (e) {
+    console.warn("quiz generation retry", e instanceof Error ? e.message : e);
+    return generateOnce(book, kind, n);
+  }
+}
+
+async function generateOnce(book: BookForQuiz, kind: "main" | "bonus", n: number): Promise<Question[]> {
   const desc = `Book: "${book.title}" by ${book.author}${book.series ? ` (${book.series}${book.series_number ? ` #${book.series_number}` : ""})` : ""}. ATOS level ${book.atos.toFixed(1)}.`;
   const { text } = await runWithSearch({
     model: SONNET,
@@ -170,7 +179,7 @@ export async function generateQuestions(book: BookForQuiz, kind: "main" | "bonus
     user: desc,
     maxSearches: 8,
     effort: "high",
-    maxTokens: 12000,
+    maxTokens: 16000,
   });
   const arr = extractJson<unknown>(text);
   if (!Array.isArray(arr)) throw new Error("Quiz reply was not a list");

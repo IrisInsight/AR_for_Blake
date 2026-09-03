@@ -53,12 +53,21 @@ class Builder {
   delete() { this.op = "delete"; return this; }
   eq(c: string, v: any) { this.filters.push([c, v]); return this; }
   gte(c: string, v: any) { this.gtes.push([c, v]); return this; }
+  lt(c: string, v: any) { this.lts.push([c, v]); return this; }
+  not(c: string, op: string, v: any) { if (op === "is" && v === null) this.notNull.push(c); return this; }
+  ilike(c: string, pat: string) { this.ilikes.push([c, pat.replace(/%/g, "").toLowerCase()]); return this; }
   private gtes: [string, any][] = [];
+  private lts: [string, any][] = [];
+  private notNull: string[] = [];
+  private ilikes: [string, string][] = [];
   order(c: string, o?: { ascending?: boolean }) { this.orders.push([c, o?.ascending !== false]); return this; }
   limit(n: number) { this.lim = n; return this; }
   single() { this.wantSingle = "single"; return this; }
   maybeSingle() { this.wantSingle = "maybe"; return this; }
-  private match(r: Row) { return this.filters.every(([c, v]) => r[c] === v) && this.gtes.every(([c, v]) => r[c] >= v); }
+  private match(r: Row) {
+    return this.filters.every(([c, v]) => r[c] === v) && this.gtes.every(([c, v]) => r[c] >= v) && this.lts.every(([c, v]) => r[c] < v)
+      && this.notNull.every((c) => r[c] != null) && this.ilikes.every(([c, p]) => String(r[c] ?? "").toLowerCase().includes(p));
+  }
   private project(r: Row): Row {
     const out = { ...r };
     const m = this.cols.match(/(\w+):(\w+)\(\*\)/);

@@ -358,3 +358,12 @@ export async function getAttemptsForBook(bookId: string): Promise<Attempt[]> {
   const rows = check(await db().from("attempts").select("*").eq("book_id", bookId));
   return (rows as Record<string, unknown>[]).map(rowToAttempt);
 }
+
+export async function staleGenerating(before: string): Promise<PrepItem[]> {
+  return check(await db().from("prep_queue").select("*").eq("status", "generating").lt("updated_at", before)) as PrepItem[];
+}
+
+export async function insertPrepMany(rows: { title: string; author: string | null; book_id: string | null; source: string }[]): Promise<void> {
+  if (!rows.length) return;
+  check(await db().from("prep_queue").insert(rows));
+}
