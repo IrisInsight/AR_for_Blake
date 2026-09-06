@@ -1,8 +1,9 @@
 import { ACCENT_COLORS } from "@/lib/catalog";
-import { deleteAttempt, deleteLedgerAndBadges, getAttempt, getKid, listAttempts, updateAttempt, updateKid } from "@/lib/db";
+import { activeSession, getKid, updateKid, updateSession, wipeKid } from "@/lib/db";
+import { addMinutes, removeSession, stopReading } from "@/lib/engine";
 import { body, HttpError, ok, route, str } from "@/lib/http";
 
-/** Grown-up corner actions. Not password protected by design (it sits behind a small gear). */
+/** Grown-up corner actions. Not password protected by design (the family code gates the whole app). */
 export const POST = route(async (req) => {
   const b = await body(req);
   const action = str(b.action, "action");
@@ -19,38 +20,49 @@ export const POST = route(async (req) => {
       }
       if (b.goal != null) {
         const goal = Number(b.goal);
-        if (!Number.isFinite(goal) || goal < 1 || goal > 500) throw new HttpError(400, "Goal must be between 1 and 500");
-        patch.goal_points = Math.round(goal * 2) / 2;
+        if (!Number.isFinite(goal) || goal < 25 || goal > 5000) throw new HttpError(400, "Goal must be between 25 and 5000 points");
+        patch.goal_points = Math.round(goal);
       }
       if (typeof b.accent === "string" && ACCENT_COLORS.some((c) => c.id === b.accent)) patch.accent = b.accent;
       await updateKid(kid.id, patch);
       return ok({ ok: true });
     }
-    case "clearAttempt": {
-      // Removes a quiz so the kid can retry. Points, bolts and badges already earned stay earned.
-      const attempt = await getAttempt(str(b.attemptId, "attemptId"));
-      if (!attempt) throw new HttpError(404, "Quiz not found");
-      const kid = await getKid(attempt.kid_id);
-      if (kid && attempt.status === "passed") {
-        await updateKid(kid.id, { lifetime_points: Math.max(0, Math.round((kid.lifetime_points - attempt.points_earned) * 10) / 10) });
-      }
-      await deleteAttempt(attempt.id);
+    case "addMinutes": {
+      const minutes = Number(b.minutes);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 300) throw new HttpError(400, "Minutes must be 1 to 300");
+      const when = typeof b.when === "string" && !Number.isNaN(Date.parse(b.when)) ? new Date(b.when) : new Date();
+      const note = typeof b.note === "string" && b.note.trim() ? b.note.trim().slice(0, 80) : null;
+      return ok(await addMinutes(str(b.kidId, "kidId"), minutes, note, when));
+    }
+    case "stopTimer": {
+      const kidId = str(b.kidId, "kidId");
+      if (!(await activeSession(kidId))) return ok({ ok: true });
+      return ok(await stopReading(kidId));
+    }
+    case "cancelTimer": {
+      // Ends the running timer without crediting any minutes.
+      const s = await activeSession(str(b.kidId, "kidId"));
+      if (s) await updateSession(s.id, { ended_at: new Date().toISOString(), minutes: 0, note: "cancelled by a grown-up" });
       return ok({ ok: true });
     }
-    case "resetPeriod": {
-      // Start the current rocket over. Books stay in the library but stop counting toward the goal.
+    case "deleteSession": {
+      await removeSession(str(b.sessionId, "sessionId"));
+      return ok({ ok: true });
+    }
+    case "addSpins": {
+      // A one-off bonus, e.g. a reward for a library visit.
       const kid = await getKid(str(b.kidId, "kidId"));
       if (!kid) throw new HttpError(404, "Kid not found");
-      const attempts = await listAttempts(kid.id);
-      for (const a of attempts) if (a.status === "passed" && !a.planet_id && !a.archived) await updateAttempt(a.id, { archived: true });
-      await updateKid(kid.id, { carry_over: 0 });
+      const n = Number(b.spins);
+      if (!Number.isInteger(n) || n < 1 || n > 100) throw new HttpError(400, "Spins must be 1 to 100");
+      await updateKid(kid.id, { spins_bank: kid.spins_bank + n });
       return ok({ ok: true });
     }
     case "resetAll": {
       const kid = await getKid(str(b.kidId, "kidId"));
       if (!kid) throw new HttpError(404, "Kid not found");
-      await deleteLedgerAndBadges(kid.id);
-      await updateKid(kid.id, { bolts: 0, lifetime_points: 0, carry_over: 0, owned: [] });
+      await wipeKid(kid.id);
+      await updateKid(kid.id, { bolts: 0, lifetime_points: 0, carry_over: 0, owned: [], spins_bank: 0, carry_seconds: 0, level: 0, lifetime_minutes: 0 });
       return ok({ ok: true });
     }
     default:

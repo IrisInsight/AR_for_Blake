@@ -11,11 +11,11 @@ const nunito = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Blake's Rocket Reader Challenge",
-  description: "Read a book, take the quiz, build the rocket.",
-  applicationName: "Rocket Reader",
+  title: "Blake's Reading Jackpot",
+  description: "Every minute you read is a spin. Every spin pays points.",
+  applicationName: "Reading Jackpot",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Rocket Reader" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Jackpot" },
   icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
   formatDetection: { telephone: false },
 };

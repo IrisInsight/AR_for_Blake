@@ -60,7 +60,7 @@ function noise(c: AudioContext, start: number, dur: number, gain = 0.25) {
   s.start(start);
 }
 
-export type SoundName = "tap" | "correct" | "wrong" | "attach" | "bolts" | "launch" | "fanfare" | "count";
+export type SoundName = "tap" | "correct" | "wrong" | "attach" | "bolts" | "launch" | "fanfare" | "count" | "reel" | "stop" | "win" | "jackpot" | "lever";
 
 export function play(name: SoundName) {
   if (isMuted()) return;
@@ -97,6 +97,24 @@ export function play(name: SoundName) {
     case "launch":
       noise(c, t, 2.4, 0.35);
       tone(c, 60, t, 2.2, "sawtooth", 0.12, 180);
+      break;
+    case "lever":
+      tone(c, 180, t, 0.12, "square", 0.08, 90);
+      noise(c, t + 0.05, 0.15, 0.12);
+      break;
+    case "reel":
+      tone(c, 700 + Math.random() * 200, t, 0.03, "square", 0.03);
+      break;
+    case "stop":
+      tone(c, 420, t, 0.08, "triangle", 0.12, 300);
+      break;
+    case "win":
+      [660, 880, 1100].forEach((f, i) => tone(c, f, t + i * 0.08, 0.16, "triangle", 0.14));
+      break;
+    case "jackpot":
+      [523, 659, 784, 1046, 1318, 1568].forEach((f, i) => tone(c, f, t + i * 0.09, 0.3, "triangle", 0.15));
+      noise(c, t + 0.5, 1.2, 0.2);
+      [1046, 1318, 1568, 2093].forEach((f, i) => tone(c, f, t + 0.7 + i * 0.1, 0.5, "triangle", 0.12));
       break;
   }
 }

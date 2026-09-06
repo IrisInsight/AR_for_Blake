@@ -1,7 +1,4 @@
 import { NextResponse } from "next/server";
-import { MissingKeyError } from "./ai";
-
-export const NO_KEY_MESSAGE = "The grown-up needs to add the ANTHROPIC_API_KEY in Vercel before book search and quizzes can work.";
 
 type Handler = (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
 
@@ -10,9 +7,6 @@ export function route(fn: Handler): Handler {
     try {
       return await fn(req, ctx);
     } catch (e) {
-      if (e instanceof MissingKeyError) {
-        return NextResponse.json({ error: NO_KEY_MESSAGE, code: "no_key" }, { status: 503 });
-      }
       if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
       console.error(e);
       const msg = e instanceof Error ? e.message : "Something went wrong";

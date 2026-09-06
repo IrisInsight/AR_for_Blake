@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Blake's Rocket Reader Challenge",
-    short_name: "Rocket Reader",
-    description: "Read a book, take the quiz, build the rocket.",
+    name: "Blake's Reading Jackpot",
+    short_name: "Jackpot",
+    description: "Every minute you read is a spin. Every spin pays points.",
     start_url: "/",
     display: "standalone",
     orientation: "any",

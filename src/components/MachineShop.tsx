@@ -1,0 +1,219 @@
+"use client";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import SlotMachine from "./SlotMachine";
+import { CoinsChip, ErrorNote } from "./ui";
+import { ACCENT_COLORS, AVATARS, CABINETS, CATALOG, CATEGORY_LABELS, LEVERS, LIGHTS, ownsItem, unlockMet, unlockText, type Category, type Milestones, type ShopItem } from "@/lib/catalog";
+import { THEMES } from "@/lib/slots";
+import { ApiError, post } from "@/lib/client";
+import { play } from "@/lib/sound";
+import type { Kid, Machine } from "@/lib/types";
+import { NAME_MAX, cleanName, isClean } from "@/lib/wordfilter";
+
+type Tab = Category | "you";
+const TABS: { id: Tab; label: string; emoji: string }[] = [
+  { id: "cabinet", label: "Cabinet", emoji: "🎨" },
+  { id: "theme", label: "Symbols", emoji: "🍒" },
+  { id: "lever", label: "Lever", emoji: "🕹️" },
+  { id: "lights", label: "Lights", emoji: "💡" },
+  { id: "you", label: "You", emoji: "🧑‍🚀" },
+];
+
+export default function MachineShop({ kid, milestones }: { kid: Kid; milestones: Milestones }) {
+  const router = useRouter();
+  const [tab, setTab] = useState<Tab>("cabinet");
+  const [cfg, setCfg] = useState<Machine>(kid.machine);
+  const [saved, setSaved] = useState<Machine>(kid.machine);
+  const [owned, setOwned] = useState<string[]>(kid.owned);
+  const [coins, setCoins] = useState(kid.bolts);
+  const [err, setErr] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ShopItem | null>(null);
+  const [busy, setBusy] = useState(false);
+  const saveTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (preview) return;
+    if (JSON.stringify(cfg) === JSON.stringify(saved)) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(async () => {
+      try {
+        const res = await post<{ machine: Machine }>("/api/machine", { kidId: kid.id, machine: cfg });
+        setSaved(res.machine);
+        setCfg(res.machine);
+      } catch (e) {
+        setErr(e instanceof ApiError ? e.message : "Couldn't save.");
+      }
+    }, 500);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [cfg, saved, preview, kid.id]);
+
+  const items = useMemo(() => CATALOG.filter((i) => i.category === tab), [tab]);
+  const apply = (it: ShopItem, c: Machine): Machine => ({ ...c, [it.category]: it.value });
+  const selected = (it: ShopItem) => cfg[it.category] === it.value;
+
+  function tap(it: ShopItem) {
+    setErr(null);
+    play("tap");
+    if (ownsItem(owned, it)) {
+      setPreview(null);
+      setCfg((c) => apply(it, c));
+      return;
+    }
+    setPreview(it);
+    setCfg((c) => apply(it, c));
+    if (!unlockMet(it.unlock, milestones)) setErr(`Locked: ${unlockText(it.unlock!)}.`);
+  }
+
+  async function buy() {
+    if (!preview) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await post<{ coins: number; owned: string[] }>("/api/shop/buy", { kidId: kid.id, itemId: preview.id });
+      setCoins(res.coins);
+      setOwned(res.owned);
+      setPreview(null);
+      play("attach");
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Couldn't buy that.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-[minmax(0,6fr)_minmax(0,6fr)] lg:items-start">
+      <div className="flex min-w-0 flex-col gap-2 lg:sticky lg:top-3">
+        <div className="flex items-center justify-between gap-2">
+          <NameEditor value={cfg.name} onChange={(name) => setCfg((c) => ({ ...c, name }))} />
+          <CoinsChip n={coins} />
+        </div>
+        <SlotMachine machine={cfg} spins={0} onSpin={async () => null} compact />
+        {preview && (
+          <div className="anim-rise flex items-center gap-2">
+            {unlockMet(preview.unlock, milestones) ? (
+              <button type="button" onClick={buy} disabled={busy || coins < preview.price} className="btn btn-accent min-h-[56px] flex-1">
+                {coins < preview.price ? `Need ${preview.price - coins} more coins` : `Buy ${preview.label} for ${preview.price} 🪙`}
+              </button>
+            ) : (
+              <div className="panel-soft flex-1 p-3 text-center text-sm font-bold">🔒 {unlockText(preview.unlock!)}</div>
+            )}
+            <button type="button" onClick={() => { setPreview(null); setCfg(saved); }} className="btn tap">Undo</button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+          {TABS.map((t) => (
+            <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`chip tap shrink-0 px-4 text-base ${tab === t.id ? "bg-accent text-[var(--accent-ink)]" : "bg-panel-2"}`}>
+              <span aria-hidden>{t.emoji}</span> {t.label}
+            </button>
+          ))}
+        </div>
+        {err && <ErrorNote message={err} />}
+        {tab === "you" ? (
+          <YouTab kid={kid} onSaved={() => router.refresh()} />
+        ) : (
+          <section>
+            <h2 className="mb-2 px-1 text-lg font-extrabold">{CATEGORY_LABELS[tab]}</h2>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {items.map((it) => {
+                const has = ownsItem(owned, it);
+                const unlocked = unlockMet(it.unlock, milestones);
+                const sel = selected(it);
+                return (
+                  <button key={it.id} type="button" onClick={() => tap(it)} aria-pressed={sel} className={`panel-soft relative flex min-h-[96px] flex-col items-center justify-center gap-1 p-2 text-center active:scale-[0.97] ${sel ? "ring-3 ring-accent" : ""} ${!unlocked ? "opacity-70" : ""}`}>
+                    <div className="grid h-11 place-items-center"><Swatch item={it} /></div>
+                    <div className="text-xs font-extrabold leading-tight">{it.label}</div>
+                    <div className="text-[11px] font-bold">{has ? <span className="text-ink-2">{it.price === 0 ? "free" : "owned"}</span> : !unlocked ? <span>🔒</span> : <span className="text-bolt">{it.price} 🪙</span>}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Swatch({ item }: { item: ShopItem }) {
+  if (item.category === "cabinet") {
+    const p = CABINETS.find((c) => c.id === item.value);
+    return <div className="h-10 w-10 rounded-xl border-2 border-white/20" style={{ background: p?.color }} />;
+  }
+  if (item.category === "theme") return <span className="text-2xl tracking-tighter" aria-hidden>{THEMES[item.value]?.glyphs.slice(0, 3).join("")}</span>;
+  if (item.category === "lever") return <div className="h-9 w-9 rounded-full border-2 border-white/30" style={{ background: LEVERS[item.value]?.color }}>{item.value === "skull" ? <span className="grid h-full place-items-center text-lg">💀</span> : null}</div>;
+  const l = LIGHTS[item.value];
+  return <div className="h-9 w-9 rounded-full border-2 border-white/20" style={{ background: `linear-gradient(135deg, ${l?.colors.join(", ")})` }} />;
+}
+
+function NameEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [bad, setBad] = useState(false);
+  if (!editing) {
+    return (
+      <button type="button" onClick={() => { setDraft(value); setEditing(true); }} className="tap flex min-w-0 items-center gap-2 rounded-2xl bg-space px-3 py-2 text-left" aria-label="Rename your machine">
+        <span className="truncate text-xl font-black">{value || "Name your machine"}</span>
+        <span className="text-ink-2 shrink-0 text-sm font-bold">✏️ rename</span>
+      </button>
+    );
+  }
+  return (
+    <form
+      className="flex min-w-0 flex-1 flex-col gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const v = cleanName(draft);
+        if (!v) return setEditing(false);
+        if (!isClean(v)) return setBad(true);
+        onChange(v);
+        setEditing(false);
+        setBad(false);
+        play("attach");
+      }}
+    >
+      <div className="flex gap-2">
+        <input autoFocus value={draft} maxLength={NAME_MAX} onChange={(e) => { setDraft(e.target.value); setBad(false); }} placeholder="Machine name" className="min-h-[48px] min-w-0 flex-1 rounded-xl bg-space px-3 text-lg font-extrabold" aria-label="Machine name" />
+        <button className="btn btn-accent tap px-4 text-base">Light it up</button>
+      </div>
+      <p className={`text-xs font-bold ${bad ? "text-[#ff8a8a]" : "text-ink-2"}`}>{bad ? "That one isn't allowed. Try another." : `Free. Up to ${NAME_MAX} letters.`}</p>
+    </form>
+  );
+}
+
+function YouTab({ kid, onSaved }: { kid: Kid; onSaved: () => void }) {
+  const [accent, setAccent] = useState(kid.accent);
+  const [avatar, setAvatar] = useState(kid.avatar);
+  async function save(patch: { accent?: string; avatar?: string }) {
+    play("tap");
+    await post("/api/kid", { kidId: kid.id, ...patch }).catch(() => {});
+    onSaved();
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="panel p-4">
+        <div className="mb-2 font-extrabold">Your color</div>
+        <div className="flex flex-wrap gap-2">
+          {ACCENT_COLORS.map((c) => (
+            <button key={c.id} type="button" aria-label={c.label} aria-pressed={accent === c.id} onClick={() => { setAccent(c.id); void save({ accent: c.id }); }} className={`tap h-12 w-12 rounded-2xl border-4 ${accent === c.id ? "border-white" : "border-transparent"}`} style={{ background: c.id }} />
+          ))}
+        </div>
+      </div>
+      <div className="panel p-4">
+        <div className="mb-2 font-extrabold">Your avatar</div>
+        <div className="grid grid-cols-4 gap-2">
+          {AVATARS.map((a) => (
+            <button key={a.id} type="button" aria-label={a.label} aria-pressed={avatar === a.id} onClick={() => { setAvatar(a.id); void save({ avatar: a.id }); }} className={`panel-soft tap grid h-16 place-items-center text-3xl ${avatar === a.id ? "ring-3 ring-accent" : ""}`}>
+              <span aria-hidden>{a.emoji}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

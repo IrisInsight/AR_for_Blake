@@ -1,75 +1,42 @@
-# Blake's Rocket Reader Challenge
+# Blake's Reading Jackpot
 
-A home version of Accelerated Reader for Blake. Open the app, find the book you just finished, take a comprehension quiz, earn points, build a rocket, launch it, discover a planet.
+A reading tracker with a slot machine in it. Every minute Blake reads earns one spin. Every spin pays points. Points fill a jackpot meter; filling it wins a trophy for the shelf. Coins earned alongside points buy new looks for the machine and never touch the score.
 
-Next.js (App Router) + TypeScript + Tailwind, Postgres on Supabase, Claude Sonnet 5 with web search for book lookup and quiz writing, deployed on Vercel. No accounts: open the URL and you are on Blake's dashboard. Progress lives in the database, so it follows him across phones and iPads.
+Next.js (App Router) + TypeScript + Tailwind, Postgres on Supabase, deployed on Vercel. No accounts: the whole app sits behind a family code that a device learns once from a shareable link. No AI, no API keys.
+
+## How it works
+
+- **Timer.** Start reading on the dashboard; the timer keeps running across reloads and devices because the session lives in the database. Stop to collect one spin per full minute (leftover seconds carry to the next session). A single sitting stops crediting after 120 minutes. A grown-up can also add minutes read elsewhere.
+- **Machine.** Three reels, eight weighted symbols, rolled on the server (`src/lib/slots.ts`). Any spin pays 2 points, a pair 6, triples 25 to 150, three gems 500. Expected value is about 4.5 points a spin, so the default 250-point jackpot is roughly an hour of reading.
+- **Two currencies.** Points measure reading and are never spent. Coins come from spins, badges, missions and jackpots, and buy cabinet colors, symbol sets, lever knobs and marquee lights.
+- **Meta.** Ranks from lifetime points, weekly missions built from recent activity, a daily streak with a fading gauge, badges, and a trophy per jackpot.
 
 ## Environment variables
 
 | Variable | Required | What it does |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | **Yes** (production) | Server routes call Claude for book search and quiz generation. Never sent to the browser. If it is missing the app still runs; search and quizzes show a clear on-screen message instead of crashing. |
 | `SUPABASE_URL` | No | Overrides the built-in database URL. |
-| `SUPABASE_PUBLISHABLE_KEY` | No | Overrides the built-in publishable key. Publishable keys are safe to expose; this one stays server-side regardless. |
-| `GOOGLE_BOOKS_KEY` | No | Only needed if Google Books starts rate-limiting the fallback catalog search. |
-| `RR_MOCK_AI` | Dev only | `1` returns canned books and questions so you can click through without spending tokens. |
-| `RR_FAKE_DB` | Dev only | `1` uses an in-memory database (state resets when the server restarts). |
+| `SUPABASE_PUBLISHABLE_KEY` | No | Overrides the built-in publishable key (safe to expose; it stays server-side here anyway). |
+| `RR_FAKE_DB` | Dev only | `1` uses an in-memory database with family code `TESTCODE`. |
 
-The only secret you have to touch is `ANTHROPIC_API_KEY`. Add it in Vercel → Project → Settings → Environment Variables, then redeploy.
+There are no secrets to configure.
 
 ## Database
 
-Supabase project `reader-rocket` (`nuddxbupepsqgiytxbnh`, us-east-1). Schema lives in `supabase/migrations/`:
-
-- `0001_init.sql`: all tables, row-level-security policies, and the seed rows (originally two readers).
-- `0002_archived_attempts.sql`: `attempts.archived` for "restart current rocket".
-- `0003_single_reader.sql`: removes the second reader; the app is Blake's alone. Blake is grade 3 with a 20-point goal.
-- `0004_search_prep_gate.sql`: book format and page count, the search cache, the quiz prep queue, settings (family code, catalog provider), and per-call API usage.
-
-All migrations are already applied to the live project. To recreate on a fresh Supabase project, run the files in order in the SQL editor (or `supabase db push`), then set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
+Supabase project `reader-rocket` (`nuddxbupepsqgiytxbnh`, us-east-1). Migrations in `supabase/migrations/` are applied in order; `0005_slot_machine_pivot.sql` drops the quiz-era tables and adds `reading_sessions`, `spins` and `jackpots`. `scripts/migrate-db.mjs` copies every table between two Supabase projects (see `NOTES.md` on moving to a free tier).
 
 ## Local development
 
 ```bash
 npm install
-cp .env.example .env.local   # add ANTHROPIC_API_KEY
-npm run dev
+RR_FAKE_DB=1 npm run dev     # then open http://localhost:3000/?code=TESTCODE
 ```
 
-To click through everything with no key and no network: `RR_MOCK_AI=1 RR_FAKE_DB=1 npm run dev`.
+## Layout
 
-`node --test src/lib/ar.test.mjs` checks the AR point formula against the three reference books.
-
-## Getting in
-
-The app sits behind a family code (no passwords, no accounts). The grown-up corner shows a shareable link that carries the code; opening it once on a device sets a long-lived cookie. Typing the code on `/enter` does the same. "Make a new code" in the grown-up corner invalidates every other device.
-
-## How search works now
-
-1. `POST /api/search` asks Open Library (Google Books as fallback) for candidates: title, author, pages, year, cover. Sub-second, cached per query.
-2. Cards render immediately. For each card not already in `books`, the client calls `POST /api/resolve`, where Claude Haiku 4.5 (web search) finds the ATOS level, AR word count, format, and series. If Haiku is unsure, Sonnet 5 takes over for that book. The result is cached forever by normalized title plus author.
-3. Word counts are clamped by format (`FORMATS` in `src/lib/ar.ts`), so a 200-page graphic novel scores like a graphic novel, not a 50,000-word novel.
-4. Resolving a series book warms the next five books of that series in the background.
-
-## Quiz prep
-
-The grown-up corner's "Quiz prep" resolves a book and writes its question pool right away. The worker (`POST /api/prep/run`) processes three books at a time and chains itself until the queue is empty. Finishing a series book queues the next one. `GET /api/admin/seed` queues the built-in list of common series in `src/lib/seedlist.ts`.
-
-Admin routes (all behind the family code): `/api/admin/booksapi` compares the two catalogs, `/api/admin/verify-levels?model=haiku|sonnet` checks levels against known AR values, `/api/admin/audit` re-resolves any cached book that looks inflated for its format and rescores earned points, `/api/admin/usage` totals Claude spend.
-
-## How the pieces fit
-
-- `src/lib/ar.ts`: point math, quiz length, ZPD ranges, pass threshold. Pure functions.
-- `src/lib/ai.ts`: Claude calls (Sonnet 5 for quizzes with `web_search_20260318`, Haiku 4.5 for levels with `web_search_20250305`), usage and cost logging, JSON extraction, mock mode.
-- `src/lib/bookapis.ts`: Open Library and Google Books adapters. `src/lib/resolve.ts`: level and format resolution with caching and series warming. `src/lib/prep.ts`: the prep queue worker.
+- `src/lib/slots.ts`: symbols, weights, payouts, the roll.
+- `src/lib/engine.ts`: timer start/stop, minute crediting, spinning, jackpots, badges and missions.
+- `src/lib/game.ts`: ranks, badges, missions, streak, trophy names.
+- `src/lib/catalog.ts`: everything the shop sells.
+- `src/components/SlotMachine.tsx`: the cabinet, reels and lever; animation is CSS transforms, outcomes come from the server.
 - `src/proxy.ts`: the family-code gate.
-- `src/lib/quiz.ts`: question pools cached per book (18 main, 6 bonus); random subset served per attempt; flagged questions retire after two flags.
-- `src/lib/engine.ts`: finishing a quiz or bonus round, awarding points, bolts, badges, missions, streak; launching; the dashboard state shape.
-- `src/lib/game.ts`: ranks, badges, missions, streak decay, station levels, planet naming.
-- `src/lib/catalog.ts`: every purchasable rocket part with price and unlock rule.
-- `src/components/Rocket.tsx`: the inline-SVG rocket, seven build stages, all customizations.
-- `src/app/api/*`: server routes. The browser never talks to Supabase or Anthropic directly.
-
-## Deploying
-
-The Vercel project is linked to this repository; every push to the production branch deploys. See `NOTES.md` for decisions and the setup checklist.

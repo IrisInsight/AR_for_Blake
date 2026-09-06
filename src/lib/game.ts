@@ -1,28 +1,18 @@
-import type { Attempt, Kid, Mission, Planet } from "./types";
-import type { AttemptWithBook } from "./db";
+import type { Jackpot, Kid, Mission, ReadingSession, Spin } from "./types";
 import type { Milestones } from "./catalog";
 
-// ---------- Bolts (spendable) ----------
-export const BOLTS = {
-  pass: 3,
-  perfectExtra: 3,
-  bonus: 5,
-  streak: 4,
-  badge: 5,
-};
+export const MIN_STREAK_MINUTES = 10; // a reading day needs at least this much
 
 // ---------- Ranks (lifetime points) ----------
 export const RANKS: { name: string; min: number; emoji: string }[] = [
-  { name: "Cadet", min: 0, emoji: "🎖️" },
-  { name: "Pilot", min: 5, emoji: "🛩️" },
-  { name: "Navigator", min: 15, emoji: "🧭" },
-  { name: "Commander", min: 30, emoji: "⭐" },
-  { name: "Captain", min: 50, emoji: "🌟" },
-  { name: "Admiral", min: 80, emoji: "🏅" },
-  { name: "Star Marshal", min: 120, emoji: "💫" },
-  { name: "Galactic Legend", min: 200, emoji: "🌌" },
+  { name: "Rookie", min: 0, emoji: "🎟️" },
+  { name: "Page Turner", min: 100, emoji: "📖" },
+  { name: "Bookworm", min: 300, emoji: "🐛" },
+  { name: "Chapter Champ", min: 700, emoji: "🏅" },
+  { name: "Story Master", min: 1500, emoji: "⭐" },
+  { name: "High Roller", min: 3000, emoji: "🎰" },
+  { name: "Reading Legend", min: 6000, emoji: "👑" },
 ];
-
 export function rankFor(points: number) {
   let r = RANKS[0];
   for (const x of RANKS) if (points >= x.min) r = x;
@@ -38,31 +28,24 @@ export interface BadgeDef {
   how: string;
 }
 export const BADGES: BadgeDef[] = [
-  { id: "first_book", name: "First book", emoji: "📕", how: "Pass your first quiz" },
-  { id: "five_books", name: "Five books", emoji: "📚", how: "Pass 5 quizzes" },
-  { id: "ten_books", name: "Ten books", emoji: "🏆", how: "Pass 10 quizzes" },
-  { id: "twenty_five_books", name: "Twenty-five books", emoji: "👑", how: "Pass 25 quizzes" },
-  { id: "perfect", name: "Perfect score", emoji: "💯", how: "Get every question right" },
-  { id: "three_week", name: "Three in a week", emoji: "🔥", how: "Pass 3 quizzes in one week" },
-  { id: "first_challenge", name: "Brave reader", emoji: "🦁", how: "Pass a Challenge book" },
-  { id: "first_bonus", name: "Bonus ace", emoji: "🎯", how: "Clear a bonus round" },
-  { id: "first_launch", name: "Liftoff", emoji: "🚀", how: "Launch your first rocket" },
+  { id: "first_spin", name: "First spin", emoji: "🎰", how: "Pull the lever once" },
+  { id: "first_triple", name: "Triple!", emoji: "🎉", how: "Land three of a kind" },
+  { id: "first_jackpot", name: "Jackpot", emoji: "💎", how: "Fill the jackpot meter" },
+  { id: "minutes_100", name: "100 minutes", emoji: "⏱️", how: "Read 100 minutes in total" },
+  { id: "minutes_500", name: "500 minutes", emoji: "🕰️", how: "Read 500 minutes in total" },
+  { id: "minutes_1000", name: "1,000 minutes", emoji: "🏆", how: "Read 1,000 minutes in total" },
+  { id: "streak_7", name: "Week streak", emoji: "🔥", how: "Read 7 days in a row" },
+  { id: "big_day", name: "Big day", emoji: "☀️", how: "Read 60 minutes in one day" },
+  { id: "gem_triple", name: "Diamond hands", emoji: "💠", how: "Spin three gems" },
+  { id: "spins_100", name: "100 spins", emoji: "🔁", how: "Spin 100 times" },
 ];
 
-// ---------- Weeks ----------
-/** Monday-start week key as YYYY-MM-DD, in local time of the server (close enough for a family app). */
-export function weekStart(d = new Date()): string {
-  const x = new Date(d);
-  const day = (x.getDay() + 6) % 7; // Monday = 0
-  x.setDate(x.getDate() - day);
-  x.setHours(0, 0, 0, 0);
-  return toDateKey(x);
-}
+// ---------- Dates ----------
 export function toDateKey(x: Date): string {
-  const y = x.getFullYear();
-  const m = String(x.getMonth() + 1).padStart(2, "0");
-  const dd = String(x.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+}
+export function dayKey(iso: string): string {
+  return toDateKey(new Date(iso));
 }
 export function addDays(key: string, n: number): string {
   const [y, m, d] = key.split("-").map(Number);
@@ -70,98 +53,69 @@ export function addDays(key: string, n: number): string {
   x.setDate(x.getDate() + n);
   return toDateKey(x);
 }
-function weekOf(iso: string): string {
-  return weekStart(new Date(iso));
+export function weekStart(d = new Date()): string {
+  const x = new Date(d);
+  const day = (x.getDay() + 6) % 7;
+  x.setDate(x.getDate() - day);
+  x.setHours(0, 0, 0, 0);
+  return toDateKey(x);
 }
 
-// ---------- Streak (fuel gauge that decays) ----------
+// ---------- Minutes ----------
+export function minutesByDay(sessions: ReadingSession[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const s of sessions) {
+    if (!s.ended_at) continue;
+    const k = dayKey(s.ended_at);
+    m.set(k, (m.get(k) ?? 0) + s.minutes);
+  }
+  return m;
+}
+export function minutesToday(sessions: ReadingSession[], now = new Date()): number {
+  return minutesByDay(sessions).get(toDateKey(now)) ?? 0;
+}
+export function minutesThisWeek(sessions: ReadingSession[], now = new Date()): number {
+  const ws = weekStart(now);
+  let n = 0;
+  for (const [k, v] of minutesByDay(sessions)) if (k >= ws) n += v;
+  return n;
+}
+
+// ---------- Streak (reading days in a row; today counts if it has minutes) ----------
 export interface Streak {
-  fuel: number; // 0..100
-  weeks: number; // consecutive weeks with a book, counting this week if it has one
-  thisWeek: number;
+  days: number;
+  today: number;
+  fuel: number; // 0..100 gauge that fades over missed days instead of snapping to zero
 }
-export function computeStreak(attempts: Attempt[], now = new Date()): Streak {
-  const passed = attempts.filter((a) => a.status === "passed" && a.completed_at);
-  const byWeek = new Map<string, number>();
-  for (const a of passed) {
-    const w = weekOf(a.completed_at as string);
-    byWeek.set(w, (byWeek.get(w) ?? 0) + 1);
+export function computeStreak(sessions: ReadingSession[], now = new Date()): Streak {
+  const byDay = minutesByDay(sessions);
+  const today = toDateKey(now);
+  const has = (k: string) => (byDay.get(k) ?? 0) >= MIN_STREAK_MINUTES;
+  let days = 0;
+  let k = has(today) ? today : addDays(today, -1);
+  while (has(k)) {
+    days++;
+    k = addDays(k, -1);
   }
-  const current = weekStart(now);
-  // Walk the last 12 completed weeks, then the current week.
   let fuel = 0;
-  const keys: string[] = [];
-  for (let i = 12; i >= 1; i--) keys.push(addDays(current, -7 * i));
-  for (const k of keys) {
-    const n = byWeek.get(k) ?? 0;
-    fuel = n > 0 ? Math.min(100, fuel + 40 + 15 * (n - 1)) : Math.max(0, fuel - 30);
+  for (let i = 14; i >= 1; i--) {
+    const key = addDays(today, -i);
+    fuel = has(key) ? Math.min(100, fuel + 35) : Math.max(0, fuel - 25);
   }
-  const thisWeek = byWeek.get(current) ?? 0;
-  if (thisWeek > 0) fuel = Math.min(100, fuel + 40 + 15 * (thisWeek - 1));
-  let weeks = 0;
-  let k = thisWeek > 0 ? current : addDays(current, -7);
-  while ((byWeek.get(k) ?? 0) > 0) {
-    weeks++;
-    k = addDays(k, -7);
-  }
-  return { fuel: Math.round(fuel), weeks, thisWeek };
+  if (has(today)) fuel = Math.min(100, fuel + 35);
+  return { days, today: byDay.get(today) ?? 0, fuel: Math.round(fuel) };
 }
 
-export function hadBookLastWeek(attempts: Attempt[], now = new Date()): boolean {
-  const last = addDays(weekStart(now), -7);
-  return attempts.some((a) => a.status === "passed" && a.completed_at && weekOf(a.completed_at) === last);
+// ---------- Trophies (one per jackpot) ----------
+const TROPHY_NAMES = ["Golden Cherry", "Diamond Page", "Lucky Clover Cup", "Rocket Ribbon", "Silver Bell", "Starburst", "Big Seven", "Bookworm Bowl", "Comet Crown", "Dragon Dish", "Thunder Trophy", "Moonstone", "Neon Nova", "Emerald Egg", "Galaxy Goblet"];
+const TROPHY_COLORS = ["#ffd23f", "#7dd3fc", "#3ecf6a", "#ff8a1f", "#c9d1de", "#ff6fae", "#e5484d", "#9b5cf6", "#14b8a6", "#f5b700"];
+export function newTrophyLook(seq: number, used: Jackpot[]) {
+  const usedNames = new Set(used.map((j) => j.name));
+  const name = TROPHY_NAMES.find((n) => !usedNames.has(n)) ?? `Trophy ${seq}`;
+  return { name, color: TROPHY_COLORS[(seq * 3) % TROPHY_COLORS.length] };
 }
 
-// ---------- Space station (long-term build from lifetime points) ----------
-export interface StationLevel {
-  level: number;
-  min: number;
-  name: string;
-  blurb: string;
-  unlock: string; // human description of the shop part this level unlocks
-}
-export const STATION_LEVELS: StationLevel[] = [
-  { level: 0, min: 0, name: "Launch pad", blurb: "Just a platform in orbit. Read to build it up.", unlock: "" },
-  { level: 1, min: 10, name: "Core module", blurb: "The first room. Somebody has to sleep somewhere.", unlock: "Station patch icon" },
-  { level: 2, min: 25, name: "Solar wings", blurb: "Big shiny panels. Now there's power.", unlock: "Chrome paint" },
-  { level: 3, min: 50, name: "Docking ring", blurb: "Room for a whole fleet to park.", unlock: "Comet trail exhaust" },
-  { level: 4, min: 90, name: "Greenhouse dome", blurb: "Space tomatoes. Space strawberries.", unlock: "Alien two-tone paint" },
-  { level: 5, min: 140, name: "Observatory", blurb: "A giant telescope pointed at the next planet.", unlock: "Quad boosters" },
-  { level: 6, min: 200, name: "Robot arm", blurb: "It waves at rockets as they fly by.", unlock: "Crown patch icon" },
-  { level: 7, min: 300, name: "Warp core", blurb: "The whole station hums. Anywhere is reachable now.", unlock: "Galaxy paint" },
-];
-export function stationFor(combined: number) {
-  let cur = STATION_LEVELS[0];
-  for (const l of STATION_LEVELS) if (combined >= l.min) cur = l;
-  const next = STATION_LEVELS.find((l) => l.min > combined) ?? null;
-  const progress = next ? (combined - cur.min) / (next.min - cur.min) : 1;
-  return { current: cur, next, progress, combined };
-}
-
-// ---------- Rocket build stages ----------
-export const STAGE_NAMES = ["engine bell", "fuel tank", "fins", "upper stage", "detail band", "window", "nose cone"];
-export function stageFor(points: number, goal: number): number {
-  if (goal <= 0) return 7;
-  const s = Math.floor((points / goal) * 7);
-  return Math.max(0, Math.min(7, s));
-}
-
-// ---------- Planets ----------
-const PLANET_NAMES = [
-  "Zorbo", "Kepler Blue", "Marshmallow", "Grumbletron", "Nebulon", "Pip", "Vortexa", "Crumb", "Sizzle", "Moonpie",
-  "Bloop", "Tangerine", "Frostbite", "Wobbly", "Quasar Nine", "Snickerdoodle", "Glimmer", "Thunderhead", "Pudding",
-  "Sparkfall", "Rumbletop", "Nimbus", "Jellyworld", "Boulder", "Fizz",
-];
-const PLANET_COLORS = ["#ff8a1f", "#3b82f6", "#3ecf6a", "#9b5cf6", "#ff6fae", "#14b8a6", "#ffd23f", "#e5484d", "#c9d1de", "#f5b700"];
-export function newPlanetLook(seq: number, used: Planet[]) {
-  const usedNames = new Set(used.map((p) => p.name));
-  const name = PLANET_NAMES.find((n) => !usedNames.has(n)) ?? `Planet ${seq}`;
-  const color = PLANET_COLORS[(seq * 3) % PLANET_COLORS.length];
-  const style = seq % 4; // 0 plain, 1 ring, 2 spots, 3 stripes
-  return { name, color, style };
-}
-
-// ---------- Missions ----------
+// ---------- Missions (weekly, coins) ----------
 export interface MissionDef {
   kind: string;
   title: string;
@@ -170,99 +124,60 @@ export interface MissionDef {
   emoji: string;
 }
 export const MISSION_DEFS: Record<string, MissionDef> = {
-  finish_one: { kind: "finish_one", title: "Finish 1 book this week", target: 1, reward: 5, emoji: "📖" },
-  finish_two: { kind: "finish_two", title: "Finish 2 books this week", target: 2, reward: 9, emoji: "📚" },
-  perfect: { kind: "perfect", title: "Score 100% on a quiz", target: 1, reward: 8, emoji: "💯" },
-  challenge: { kind: "challenge", title: "Read a Challenge book", target: 1, reward: 10, emoji: "🦁" },
-  bonus_try: { kind: "bonus_try", title: "Try a bonus round", target: 1, reward: 6, emoji: "🎯" },
-  bonus_win: { kind: "bonus_win", title: "Clear a bonus round", target: 1, reward: 10, emoji: "🏹" },
-  big_book: { kind: "big_book", title: "Finish a book worth 3+ points", target: 1, reward: 8, emoji: "🐘" },
-  new_author: { kind: "new_author", title: "Read a book by a new author", target: 1, reward: 6, emoji: "✍️" },
-  series: { kind: "series", title: "Read the next book in a series", target: 1, reward: 6, emoji: "🔗" },
+  minutes_60: { kind: "minutes_60", title: "Read 60 minutes this week", target: 60, reward: 10, emoji: "⏱️" },
+  minutes_120: { kind: "minutes_120", title: "Read 120 minutes this week", target: 120, reward: 18, emoji: "⏳" },
+  days_3: { kind: "days_3", title: "Read on 3 different days", target: 3, reward: 10, emoji: "📅" },
+  days_5: { kind: "days_5", title: "Read on 5 different days", target: 5, reward: 16, emoji: "🗓️" },
+  big_day_30: { kind: "big_day_30", title: "Read 30 minutes in one day", target: 1, reward: 8, emoji: "☀️" },
+  spins_25: { kind: "spins_25", title: "Spin 25 times", target: 25, reward: 8, emoji: "🎰" },
+  triple: { kind: "triple", title: "Land a triple", target: 1, reward: 12, emoji: "🎉" },
+  pairs_10: { kind: "pairs_10", title: "Spin 10 pairs", target: 10, reward: 8, emoji: "👯" },
 };
 
-/** Pick three missions from what the kid has actually been doing. */
-export function pickMissions(history: AttemptWithBook[], grade: number): MissionDef[] {
-  const passed = history.filter((a) => a.status === "passed");
-  const picks: string[] = [];
-  const recent = passed.slice(0, 6);
-  const avgPts = recent.length ? recent.reduce((s, a) => s + a.book.points, 0) / recent.length : 0;
-
-  // Volume mission: beginners get 1, regulars get 2.
-  picks.push(passed.length < 2 ? "finish_one" : "finish_two");
-
-  const candidates: string[] = [];
-  if (!passed.some((a) => a.level_label === "challenge")) candidates.push("challenge");
-  if (!history.some((a) => a.bonus_status && a.bonus_status !== "available" && a.bonus_status !== "declined")) candidates.push("bonus_try");
-  else if (!history.some((a) => a.bonus_status === "passed")) candidates.push("bonus_win");
-  if (!passed.some((a) => (a.percent ?? 0) >= 1)) candidates.push("perfect");
-  if (avgPts < 3 && grade >= 3) candidates.push("big_book");
-  if (passed.some((a) => a.book.series)) candidates.push("series");
-  if (passed.length >= 2) candidates.push("new_author");
-  // Always something to do for a kid who's done everything.
-  candidates.push("perfect", "challenge", "big_book", "bonus_win");
-
-  for (const c of candidates) {
-    if (picks.length >= 3) break;
-    if (!picks.includes(c)) picks.push(c);
-  }
+export function pickMissions(sessions: ReadingSession[], spins: Spin[]): MissionDef[] {
+  const weeks = new Set(sessions.filter((s) => s.ended_at).map((s) => weekStart(new Date(s.ended_at as string))));
+  const veteran = weeks.size >= 2;
+  const picks = [veteran ? "minutes_120" : "minutes_60", veteran ? "days_5" : "days_3"];
+  const hadTriple = spins.some((s) => s.kind === "triple" || s.kind === "jackpot");
+  picks.push(!hadTriple && spins.length > 10 ? "triple" : spins.length < 20 ? "spins_25" : "big_day_30");
   return picks.map((k) => MISSION_DEFS[k]);
 }
 
-/** Given a fresh attempt outcome, advance the week's missions. Returns bolts newly earned. */
-export interface MissionEvent {
-  attempt: AttemptWithBook;
-  history: AttemptWithBook[]; // includes the attempt, most recent first
-  bonusTried?: boolean;
-  bonusWon?: boolean;
-}
-export function missionProgressFor(m: Mission, ev: MissionEvent): number {
-  const a = ev.attempt;
-  const passed = a.status === "passed";
+/** Recompute a mission's progress from this week's activity. */
+export function missionProgress(m: Mission, sessions: ReadingSession[], spins: Spin[], now = new Date()): number {
+  const ws = weekStart(now);
+  const week = sessions.filter((s) => s.ended_at && dayKey(s.ended_at) >= ws);
+  const byDay = minutesByDay(week);
+  const weekSpins = spins.filter((s) => dayKey(s.created_at) >= ws);
   switch (m.kind) {
-    case "finish_one":
-    case "finish_two":
-      return passed ? m.progress + 1 : m.progress;
-    case "perfect":
-      return passed && (a.percent ?? 0) >= 1 ? 1 : m.progress;
-    case "challenge":
-      return passed && a.level_label === "challenge" ? 1 : m.progress;
-    case "bonus_try":
-      return ev.bonusTried ? 1 : m.progress;
-    case "bonus_win":
-      return ev.bonusWon ? 1 : m.progress;
-    case "big_book":
-      return passed && a.book.points >= 3 ? 1 : m.progress;
-    case "new_author": {
-      if (!passed) return m.progress;
-      const others = ev.history.filter((h) => h.id !== a.id && h.status === "passed");
-      const seen = others.some((h) => h.book.author.toLowerCase() === a.book.author.toLowerCase());
-      return seen ? m.progress : 1;
-    }
-    case "series": {
-      if (!passed || !a.book.series) return m.progress;
-      const others = ev.history.filter((h) => h.id !== a.id && h.status === "passed" && h.book.series === a.book.series);
-      return others.length ? 1 : m.progress;
-    }
+    case "minutes_60":
+    case "minutes_120":
+      return week.reduce((n, s) => n + s.minutes, 0);
+    case "days_3":
+    case "days_5":
+      return [...byDay.values()].filter((v) => v >= MIN_STREAK_MINUTES).length;
+    case "big_day_30":
+      return [...byDay.values()].some((v) => v >= 30) ? 1 : 0;
+    case "spins_25":
+      return weekSpins.length;
+    case "triple":
+      return weekSpins.some((s) => s.kind === "triple" || s.kind === "jackpot") ? 1 : 0;
+    case "pairs_10":
+      return weekSpins.filter((s) => s.kind === "pair").length;
   }
   return m.progress;
 }
 
-// ---------- Milestones for shop unlocks ----------
-export function milestonesFor(kid: Kid, attempts: Attempt[], planets: Planet[], stationLevel: number): Milestones {
-  const passed = attempts.filter((a) => a.status === "passed");
+export function milestonesFor(kid: Kid, spins: Spin[], jackpots: Jackpot[]): Milestones {
   return {
-    points: kid.lifetime_points,
-    books: passed.length,
-    launches: planets.length,
-    perfects: passed.filter((a) => (a.percent ?? 0) >= 1).length,
-    bonus: attempts.filter((a) => a.bonus_status === "passed").length,
-    station: stationLevel,
+    minutes: kid.lifetime_minutes,
+    jackpots: jackpots.length,
+    triples: spins.filter((s) => s.kind === "triple" || s.kind === "jackpot").length,
+    spins: spins.length,
   };
 }
 
-/** Points toward the current rocket = carry-over + points from books not yet flown to a planet. */
-export function periodPoints(kid: Kid, attempts: Attempt[]): number {
-  const sum = attempts.filter((a) => a.status === "passed" && !a.planet_id && !a.archived).reduce((s, a) => s + a.points_earned, 0);
-  return Math.round((kid.carry_over + sum) * 10) / 10;
+/** Points toward the current jackpot = carry-over + points from spins since the last jackpot. */
+export function meterPoints(kid: Kid, spins: Spin[]): number {
+  return kid.carry_over + spins.filter((s) => !s.jackpot_id).reduce((n, s) => n + s.points, 0);
 }
