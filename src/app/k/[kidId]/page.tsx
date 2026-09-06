@@ -40,6 +40,14 @@ export default async function Dashboard({ params }: { params: Promise<{ kidId: s
       <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
         <div className="flex min-w-0 flex-col gap-4">
           <ReadingTimer kidId={kid.id} active={active} spins={kid.spins_bank} carrySeconds={kid.carry_seconds} />
+          <Link href="/grownup#add" className="panel-soft flex items-center gap-3 p-3 active:scale-[0.99]">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-panel-2 text-2xl" aria-hidden>✍️</span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-extrabold">Read without the timer?</span>
+              <span className="text-ink-2 block text-sm font-bold">A grown-up can add the minutes here.</span>
+            </span>
+            <span className="text-ink-2 font-black">›</span>
+          </Link>
 
           <Link href={`/k/${kid.id}/spin`} className="panel flex items-center gap-4 p-4 active:scale-[0.99]" style={{ borderTop: `6px solid ${kid.accent}` }}>
             <div className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-panel-2 text-4xl" aria-hidden>🎰</div>

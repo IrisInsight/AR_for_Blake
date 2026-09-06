@@ -32,10 +32,11 @@ export default function GrownupClient({ kid, sessions, ledger, code, link, timer
 
   return (
     <div className="flex flex-col gap-4">
-      <ShareLink code={code} link={link} />
       {err && <ErrorNote message={err} />}
 
       <AddMinutes busy={busy} onAdd={(p) => act({ action: "addMinutes", kidId: kid.id, ...p })} />
+
+      <ShareLink code={code} link={link} />
 
       {timerRunning && (
         <section className="panel flex flex-col gap-2 border-2 border-[#ffd23f]/60 p-4">
@@ -122,19 +123,41 @@ function ShareLink({ code, link }: { code: string; link: string }) {
   );
 }
 
+const QUICK = [10, 15, 20, 30, 45, 60];
+
 function AddMinutes({ busy, onAdd }: { busy: boolean; onAdd: (p: { minutes: number; note: string; when: string }) => void }) {
   const [minutes, setMinutes] = useState(20);
   const [note, setNote] = useState("");
   const [when, setWhen] = useState<"now" | "yesterday">("now");
+  const [added, setAdded] = useState<number | null>(null);
   return (
-    <section className="panel flex flex-col gap-3 p-4">
+    <section id="add" className="panel flex flex-col gap-3 border-2 border-accent/60 p-4">
       <div>
-        <div className="font-extrabold">Add reading minutes</div>
-        <p className="text-ink-2 text-sm font-bold">For reading that happened away from the timer: school, the car, bedtime. Each minute is a spin.</p>
+        <div className="text-xl font-black">Add reading minutes</div>
+        <p className="text-ink-2 text-sm font-bold">For reading away from the timer: school, the car, bedtime. Each minute is a spin.</p>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {QUICK.map((n) => (
+          <button key={n} type="button" onClick={() => setMinutes(n)} aria-pressed={minutes === n} className={`btn tap text-lg ${minutes === n ? "btn-accent" : ""}`}>
+            {n} min
+          </button>
+        ))}
       </div>
       <div className="flex items-center justify-between rounded-2xl bg-space p-2">
         <button type="button" aria-label="Less" onClick={() => setMinutes((m) => Math.max(1, m - 5))} className="tap grid h-11 w-11 place-items-center rounded-xl bg-panel-2 text-xl font-black">−</button>
-        <span className="numeral text-3xl">{minutes} <span className="text-ink-2 text-base">min</span></span>
+        <label className="flex items-baseline gap-1">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={300}
+            value={minutes}
+            onChange={(e) => setMinutes(Math.max(1, Math.min(300, Math.round(Number(e.target.value) || 0))))}
+            aria-label="Minutes"
+            className="numeral w-24 rounded-xl bg-panel px-2 text-center text-3xl"
+          />
+          <span className="text-ink-2 text-base font-bold">min</span>
+        </label>
         <button type="button" aria-label="More" onClick={() => setMinutes((m) => Math.min(300, m + 5))} className="tap grid h-11 w-11 place-items-center rounded-xl bg-panel-2 text-xl font-black">+</button>
       </div>
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional): read at school" maxLength={80} className="min-h-[48px] rounded-xl bg-space px-3 text-base font-bold" />
@@ -143,9 +166,10 @@ function AddMinutes({ busy, onAdd }: { busy: boolean; onAdd: (p: { minutes: numb
           <button key={w} type="button" onClick={() => setWhen(w)} className={`btn tap flex-1 text-base ${when === w ? "btn-accent" : ""}`}>{w === "now" ? "Today" : "Yesterday"}</button>
         ))}
       </div>
-      <button type="button" disabled={busy} className="btn btn-accent" onClick={() => { const d = new Date(); if (when === "yesterday") d.setDate(d.getDate() - 1); onAdd({ minutes, note, when: d.toISOString() }); setNote(""); }}>
-        Add {minutes} minutes ({minutes} spins)
+      <button type="button" disabled={busy || minutes < 1} className="btn btn-accent btn-big" onClick={() => { const d = new Date(); if (when === "yesterday") d.setDate(d.getDate() - 1); onAdd({ minutes, note, when: d.toISOString() }); setNote(""); setAdded(minutes); }}>
+        Add {minutes} minutes ({minutes} spin{minutes === 1 ? "" : "s"})
       </button>
+      {added != null && !busy && <p className="anim-rise text-center font-extrabold text-[#3ecf6a]">Added {added} minutes. {added} spin{added === 1 ? "" : "s"} are waiting on the machine.</p>}
     </section>
   );
 }
