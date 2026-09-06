@@ -6,7 +6,8 @@ import type { Machine } from "@/lib/types";
 import { play } from "@/lib/sound";
 import { useReducedMotion } from "@/lib/client";
 
-const REPEATS = 6; // strip repeats; we land in the middle so there is always room to roll
+const REPEATS = 10; // strip repeats; reels rest in the second repeat so a spin of up to 4 turns never runs off the end
+const HOME = REEL_LEN * 2;
 const SYMBOL_H = 96; // px per symbol row in the window
 
 export interface SlotMachineProps {
@@ -25,7 +26,7 @@ export default function SlotMachine({ machine, spins, onSpin, onSettled, disable
   const lights = LIGHTS[machine.lights] ?? LIGHTS.gold;
   const lever = LEVERS[machine.lever] ?? LEVERS.red;
   const glyphs = glyphsFor(machine.theme);
-  const [pos, setPos] = useState<number[]>([0, 3, 6]); // absolute symbol offsets on the strip
+  const [pos, setPos] = useState<number[]>([HOME, HOME + 3, HOME + 6]); // absolute symbol offsets on the strip
   const [spinning, setSpinning] = useState(false);
   const [pulled, setPulled] = useState(false);
   const [hot, setHot] = useState<number[]>([]);
@@ -65,6 +66,9 @@ export default function SlotMachine({ machine, spins, onSpin, onSettled, disable
       window.setTimeout(() => {
         setHot(roll.matched);
         setSpinning(false);
+        // Snap back (no transition) to the same symbols in the resting repeat so the next spin has room.
+        setDurations([0, 0, 0]);
+        setPos((prev) => prev.map((p) => HOME + (((p % REEL_LEN) + REEL_LEN) % REEL_LEN)));
         if (roll.kind === "jackpot") play("jackpot");
         else if (roll.kind === "triple") play("jackpot");
         else if (roll.kind === "pair") play("win");
